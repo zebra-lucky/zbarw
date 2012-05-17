@@ -1,4 +1,4 @@
-general:
+general: 
   * finish error handling
   * handle video destroyed w/images outstanding
   * dbg_scan background image stretched (still...)
