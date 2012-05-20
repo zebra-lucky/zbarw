@@ -177,6 +177,15 @@ AC_ARG_ENABLE([video],
   [],
   [enable_video="yes"])
 
+dnl video, directshow
+with_directshow="no"
+AC_ARG_WITH([directshow],
+  [AS_HELP_STRING([--with-directshow],
+     [compile directshow driver on windows instead of vfw,
+available only when video support is enabled])],
+  [with_directshow="yes"],
+  [])
+
 have_v4l1="no"
 have_v4l2="no"
 AS_IF([test "x$enable_video" = "xno"],
@@ -190,13 +199,16 @@ rebuild your kernel to include video4linux support or
 configure --disable-video to skip building video support.])],
      [test "x$have_v4l2" = "xno"],
      [AC_MSG_WARN([v4l2 API not detected, upgrade your kernel!])])],
-  [AC_CHECK_HEADERS([vfw.h], [with_video="vfw"],
-    [AC_MSG_FAILURE([test for VfW video support failed!
-configure --disable-video to skip building video support.])])])
+    [AS_IF([test "x$with_directshow" != "xno"],
+      [with_video="directshow"],
+      [AC_CHECK_HEADERS([vfw.h], [with_video="vfw"],
+        [AC_MSG_FAILURE([test for VfW video support failed!
+configure --disable-video to skip building vidoe support.])])])])
 
 AM_CONDITIONAL([HAVE_VIDEO], [test "x$enable_video" != "xno"])
 AM_CONDITIONAL([HAVE_V4L1], [test "x$have_v4l1" != "xno"])
 AM_CONDITIONAL([HAVE_V4L2], [test "x$have_v4l2" != "xno"])
+AM_CONDITIONAL([WITH_DIRECTSHOW], [test "x$with_directshow" != "xno"])
 
 dnl X
 AC_ARG_VAR([XSHM_LIBS], [linker flags for X shared memory extension])
@@ -570,7 +582,14 @@ echo "X                 --with-x=$have_x"
 echo "pthreads          --enable-pthread=$enable_pthread"
 echo "v4l               --enable-video=$enable_video"
 AS_IF([test "x$enable_video" != "xyes"],
-  [echo "        => zbarcam video scanner will *NOT* be built"])
+  [echo "        => zbarcam video scanner will *NOT* be built"],
+  [AS_IF([test "x$win32" != "xno"],
+    [AS_IF([test "x$with_directshow" != "xno"],
+      [echo "        => building directshow driver"],
+      [echo "        => building VfW driver"]
+    )]
+  )]
+)
 echo "jpeg              --with-jpeg=$with_jpeg"
 AS_IF([test "x$with_jpeg" != "xyes"],
   [echo "        => JPEG image conversions will *NOT* be supported"])

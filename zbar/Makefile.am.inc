@@ -53,7 +53,7 @@ zbar_libzbar_la_SOURCES += zbar/qrcode.h \
 endif
 
 if WIN32
-zbar_libzbar_la_SOURCES += zbar/processor/win.c zbar/libzbar.rc
+zbar_libzbar_la_SOURCES += zbar/processor/win.h zbar/processor/win.c zbar/libzbar.rc
 zbar_libzbar_la_CPPFLAGS += -mthreads
 zbar_libzbar_la_LDFLAGS += -mthreads
 # FIXME broken
@@ -73,8 +73,14 @@ zbar_libzbar_la_SOURCES += zbar/video/v4l1.c
 endif
 if WIN32
 if HAVE_VIDEO
+if !WITH_DIRECTSHOW
 zbar_libzbar_la_SOURCES += zbar/video/vfw.c
 zbar_libzbar_la_LIBADD += -lvfw32
+else
+zbar_libzbar_la_SOURCES += zbar/video/dshow.c zbar/video/wine-1.4-zbar-dshow/unknwn_i.c zbar/video/wine-1.4-zbar-dshow/oaidl_i.c zbar/video/wine-1.4-zbar-dshow/strmif_i.c zbar/video/wine-1.4-zbar-dshow/control_i.c zbar/video/wine-1.4-zbar-dshow/qedit_i.c
+zbar_libzbar_la_CPPFLAGS += -I./zbar/video/wine-1.4-zbar-dshow -Izbar/video/wine-1.4-zbar/include -Izbar/video/wine-1.4-zbar/include/msvcrt -DCOBJMACROS -DWINE_NOWINSOCK
+zbar_libzbar_la_LIBADD += -loleaut32 -lole32
+endif
 endif
 endif
 if !HAVE_VIDEO
