@@ -108,6 +108,8 @@ static void DestroyMediaType(AM_MEDIA_TYPE* mt)
 // Destroy the format block for a media type and free the media type
 static void DeleteMediaType(AM_MEDIA_TYPE* mt)
 {
+    if (!mt)
+        return;
     DestroyMediaType(mt);
     CoTaskMemFree(mt);
 }
@@ -407,7 +409,7 @@ static int dshow_set_format (zbar_video_t* vdo,
 
     video_state_t* state = vdo->state;
 
-    AM_MEDIA_TYPE* currentmt;
+    AM_MEDIA_TYPE* currentmt = NULL;
     HRESULT hr = IAMStreamConfig_GetFormat(state->streamconfig, &currentmt);
     CHECK_COM_ERROR(hr, "queried currentmt, hresult: 0x%lx\n", return -1);
     
@@ -445,6 +447,18 @@ static int dshow_set_format (zbar_video_t* vdo,
 
     hr = IAMStreamConfig_SetFormat(state->streamconfig, currentmt);
     CHECK_COM_ERROR(hr, "setting dshow format failed, hresult: 0x%lx\n", goto cleanup)
+
+    DeleteMediaType(currentmt);
+    
+    
+    // re-read format, image data size might have changed
+    
+    currentmt = NULL;
+    hr = IAMStreamConfig_GetFormat(state->streamconfig, &currentmt);
+    CHECK_COM_ERROR(hr, "queried currentmt, hresult: 0x%lx\n", return -1);
+    
+    vih = (VIDEOINFOHEADER*) currentmt->pbFormat;
+    bih = &vih->bmiHeader;
 
     vdo->format = fmt;
     vdo->width = bih->biWidth;
