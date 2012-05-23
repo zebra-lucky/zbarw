@@ -49,6 +49,9 @@ ZBAR_DEFINE_STATIC_GUID(CLSID_VideoInputDeviceCategory,
 // BF87B6E1-8C27-11d0-B3F0-00AA003761C5     New Capture graph building
 ZBAR_DEFINE_STATIC_GUID(CLSID_CaptureGraphBuilder2,
 0xBF87B6E1, 0x8C27, 0x11d0, 0xB3, 0xF0, 0x0, 0xAA, 0x00, 0x37, 0x61, 0xC5);
+// {301056D0-6DFF-11d2-9EEB-006008039E37}
+ZBAR_DEFINE_STATIC_GUID(CLSID_MjpegDec,
+0x301056d0, 0x6dff, 0x11d2, 0x9e, 0xeb, 0x0, 0x60, 0x8, 0x3, 0x9e, 0x37);
 
 // 73646976-0000-0010-8000-00AA00389B71  'vids' == MEDIATYPE_Video
 ZBAR_DEFINE_STATIC_GUID(MEDIATYPE_Video,
@@ -436,6 +439,11 @@ static int dshow_set_format (zbar_video_t* vdo,
     case ZBAR_FMT_RGB_PACKED:
         bih->biBitCount = fmtdef->p.rgb.bpp * 8;
         break;
+        // note: MJPG belongs to class ZBAR_FMT_JPEG and seems to have always 24bpp, 
+        // which is queried after setting it
+    case ZBAR_FMT_JPEG:
+        //bih->biBitCount = 24;
+        //break;
     default:
         bih->biBitCount = 0;
     }
@@ -526,9 +534,47 @@ init:
         return(err_capture(vdo, SEV_ERROR, ZBAR_ERR_BUSY, __func__,
                            "setting capture callbacks"));
 
+
+    // special handling for MJPG streams:
+    // we use the stock mjpeg decompressor filter
+    //if (fmt == fourcc('M','J','P','G'))
+    if (0)
+    {
     // set up directshow graph
-    hr = ICaptureGraphBuilder2_RenderStream(state->builder, &PIN_CATEGORY_PREVIEW, &MEDIATYPE_Video, (IUnknown*)state->camera, state->grabberbase, state->nullrenderer);
-    CHECK_COM_ERROR(hr, "setting up capture graph, hresult: 0x%lx\n", return -1)
+        IBaseFilter* mjpgdecompressor = NULL;
+        hr = CoCreateInstance(&CLSID_MjpegDec, NULL, CLSCTX_INPROC_SERVER, &IID_IBaseFilter, (void**)&mjpgdecompressor);
+        CHECK_COM_ERROR(hr, "failed to create mjpeg decompressor filter (hresult=0x%lx)\n", return -1)
+
+        // add mjpeg decompressor to graph
+        hr = IGraphBuilder_AddFilter(state->graph, mjpgdecompressor, L"MJPEG decompressor");
+        CHECK_COM_ERROR(hr, "adding MJPEG decompressor, hresult: 0x%lx\n", goto mjpg_cleanup)
+
+        hr = ICaptureGraphBuilder2_RenderStream(state->builder, &PIN_CATEGORY_PREVIEW, &MEDIATYPE_Video, (IUnknown*)state->camera, NULL, mjpgdecompressor);
+        CHECK_COM_ERROR(hr, "setting up capture graph 1, hresult: 0x%lx\n", goto mjpg_cleanup)
+        hr = ICaptureGraphBuilder2_RenderStream(state->builder, NULL, &MEDIATYPE_Video, (IUnknown*)mjpgdecompressor, state->grabberbase, state->nullrenderer);
+        CHECK_COM_ERROR(hr, "setting up capture graph 2, hresult: 0x%lx\n", goto mjpg_cleanup)
+
+        // set input information for zbar.
+        // 
+        // note: the mjpeg decompressor outputs MediaSubtype_RGB32 by default,
+        // its memory layout is BGR (see http://msdn.microsoft.com/en-us/library/windows/desktop/dd407253(v=vs.85).aspx);
+        // 
+        // TODO: on my dell latitude e6520 laptop the decompressor produces a bottom-up image, 
+        // which zbar doesn't seem to recognize, so the images are displayed upside-down.
+        // changing the format to MediaSubtype_RGB24 or MediaSubtype_RGB565 doesn't help either
+        vdo->format = fourcc('B','G','R','4');
+        vdo->datalen = vdo->width * vdo->height * 4;
+
+mjpg_cleanup:
+        IBaseFilter_Release(mjpgdecompressor);
+        if (FAILED(hr))
+            return -1;
+    }
+    else
+    {
+        hr = ICaptureGraphBuilder2_RenderStream(state->builder, NULL, &MEDIATYPE_Video, (IUnknown*)state->camera, state->grabberbase, state->nullrenderer);
+        CHECK_COM_ERROR(hr, "setting up capture graph, hresult: 0x%lx\n", return -1)
+    }
 
     // directshow keeps ownership of the image passed to the callback,
     // hence, keeping a pointer to the original data (iomode VIDEO_MMAP) is a bad idea
