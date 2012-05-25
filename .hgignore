@@ -1,6 +1,9 @@
 syntax: glob
 
 *~
+.deps
+.dirstamp
+.libs
 Makefile
 Makefile.in
 aclocal.m4
@@ -14,12 +17,19 @@ config.status
 config.sub
 depcomp
 compile
+doc/doxygen.conf
+doc/man/man.stamp
+doc/reldate.xml
+doc/version.xml
+include/config.h
+include/stamp-h1
 install-sh
 libtool
 ltmain.sh
 autom4te.cache
 missing
 python/MANIFEST
+zbar*.pc
 build
 *.xcodeproj/*.mode1v3
 *.xcodeproj/*.pbxuser
@@ -29,6 +39,12 @@ contents.xcworkspacedata
 android/obj
 *.class
 *.dex
+*.exe
+*.la
+*.lo
+*.o
+*.Plo
+*/wine-*
 android/libs
 android/examples/*/libs
 android/*.zip
