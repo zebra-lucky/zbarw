@@ -242,9 +242,8 @@ static void dshow_destroy_video_state_t(video_state_t* state)
     if (state->captured)
         CloseHandle(state->captured);
 
-    if(state->bih) { free(state->bih); state->bih = NULL; }
-    if(state->int_formats) { free(state->int_formats);
-                             state->int_formats = NULL; }
+    free(state->bih);
+    free(state->int_formats);
 }
 
 
