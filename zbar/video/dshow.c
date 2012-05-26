@@ -246,6 +246,23 @@ static void dshow_destroy_video_state_t(video_state_t* state)
     free(state->int_formats);
 }
 
+/// Flips the image vertically copying it from srcBuf to img.
+/** @param bpp Bits Per Pixel */
+static void flip_vert(zbar_image_t* const img, void* const srcBuf, int bpp)
+{
+    // The formula below works only if bpp%8==0
+    long bytesPerLine = 1L * img->width * bpp / 8;
+    assert(img->datalen >= img->height * bytesPerLine);
+    void *dst = (void*)img->data;
+    void *src = srcBuf + (img->height - 1) * bytesPerLine;
+    int i;
+    for (i=0; i < img->height; i++) {
+        memcpy(dst, src, bytesPerLine);
+        dst += bytesPerLine;
+        src -= bytesPerLine;
+    }
+    assert(src + bytesPerLine == srcBuf);
+}
 
 // sample grabber implementation (derived from ISampleGrabberCB)
 typedef struct zbar_samplegrabber_cb
@@ -367,7 +384,20 @@ HRESULT __stdcall zbar_samplegrabber_cb_BufferCB(ISampleGrabberCB* _This, double
         zprintf(16, "copying into img: %p (srcidx: %d, data: %p, len: %ld)\n", img, img->srcidx, img->data, img->datalen);
 
         assert(img->datalen == bufferlen);
-        memcpy((void*)img->data, buffer, img->datalen);
+
+        // The image needs to be copied now. Usually memcpy is ok,
+        // but in case of MJPG the picture is upside-down.
+        // TODO: Discover that the picture is upside-down somehow
+        //       (through IPin::ConnectionMediaType for example)
+        int fmt_ind;
+        if ((fmt_ind = get_format_index(vdo->formats, img->format)) >= 0
+            && vdo->state->int_formats[fmt_ind] == fourcc('M','J','P','G'))
+        {
+            flip_vert(img, buffer, 32);
+        } else {
+            memcpy((void*)img->data, buffer, img->datalen);
+        }
+
         vdo->state->image = img;
         SetEvent(vdo->state->captured);
     }
