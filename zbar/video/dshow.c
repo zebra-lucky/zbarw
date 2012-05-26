@@ -132,7 +132,22 @@ static int dshow_is_fourcc_guid(REFGUID subtype)
     return IsEqualGUID(subtype, &clsid);
 }
 
-
+/// Returns the index in <code>vdo->formats</code> of the given format.
+/** If not found, returns -1 */
+int get_format_index(uint32_t* fmts, uint32_t fmt0)
+{
+    uint32_t *fmt;
+    int i = 0;
+    for (fmt = fmts; *fmt; fmt++) {
+        if (*fmt == fmt0)
+            break;
+        i++;
+    }
+    if (*fmt)
+        return i;
+    else
+        return -1;
+}
 
 struct video_state_s
 {
@@ -151,7 +166,67 @@ struct video_state_s
     IBaseFilter* nullrenderer;
     ICaptureGraphBuilder2* builder;
     IAMStreamConfig* streamconfig;    /* dshow stream configuration interface */
+    /// 0 terminated list of supported internal formats.
+    /** The size of this
+      * array matches the size of {@link zbar_video_s#formats} array and
+      * the consecutive entries correspond to each other, making a mapping
+      * between internal (dshow) formats and zbar formats
+      * (presented to zbar processor). */
+    uint32_t *int_formats;
 };
+
+static void dump_formats(zbar_video_t* vdo)
+{
+    video_state_t* state = vdo->state;
+    uint32_t *fmt, *int_fmt;
+    zprintf(8, "Detected formats: (internal) / (translated for zbar)\n");
+    fmt = vdo->formats;
+    int_fmt = state->int_formats;
+    while (*fmt) {
+        zprintf(8, "  %.4s / %.4s\n", (char*)int_fmt, (char*)fmt);
+        fmt++; int_fmt++;
+    }
+}
+
+/// Maps internal format MJPG (if found) to a format known to
+/// zbar.
+/** The conversion will be done by dshow mjpeg decompressor
+  * before passing the image to zbar. */
+static void prepare_mjpg_format_mapping(zbar_video_t* vdo)
+{
+    video_state_t* state = vdo->state;
+    /// The format we will convert MJPG to
+    uint32_t fmtConv = fourcc('B','G','R','4');
+
+    int iMjpg = get_format_index(state->int_formats, fourcc('M','J','P','G'));
+    if (iMjpg < 0)
+        return;
+    assert(vdo->formats[iMjpg] == fourcc('M','J','P','G'));
+
+    // If we already have fmtConv, it will lead to duplicating it in
+    // external formats.
+    // We can't leave it this way, because when zbar wants to use fmtConv
+    // we must have only one internal format for that.
+    // It's better to drop MJPG then, as it's a compressed format and
+    // we prefer better quality images.
+
+    // The index of fmtConv before mapping mjpg to fmtConv
+    int iMjpgConv = get_format_index(state->int_formats, fmtConv);
+
+    if (iMjpgConv >= 0) {
+        // remove the iMjpgConv entry by moving the following entries by 1
+        int i;
+        for (i=iMjpgConv; vdo->formats[i]; i++) {
+            vdo->formats[i] = vdo->formats[i+1];
+            state->int_formats[i] = state->int_formats[i+1];
+        }
+        // The number of formats is reduced by 1 now, but to realloc just
+        // to save 2 times 4 bytes? Too much fuss.
+    }
+    else {
+        vdo->formats[iMjpg] = fmtConv;
+    }
+}
 
 static void dshow_destroy_video_state_t(video_state_t* state)
 {
@@ -166,6 +241,10 @@ static void dshow_destroy_video_state_t(video_state_t* state)
 
     if (state->captured)
         CloseHandle(state->captured);
+
+    if(state->bih) { free(state->bih); state->bih = NULL; }
+    if(state->int_formats) { free(state->int_formats);
+                             state->int_formats = NULL; }
 }
 
 
@@ -406,11 +485,13 @@ static int dshow_set_format (zbar_video_t* vdo,
                            uint32_t fmt)
 {
     const zbar_format_def_t* fmtdef = _zbar_format_lookup(fmt);
-    if (!fmtdef->format)
+    int fmt_ind = get_format_index(vdo->formats, fmt);
+    if (!fmtdef->format || fmt_ind < 0)
         return(err_capture_int(vdo, SEV_ERROR, ZBAR_ERR_INVALID, __func__,
                                "unsupported vfw format: %x", fmt));
 
     video_state_t* state = vdo->state;
+    int int_fmt = state->int_formats[fmt_ind];
 
     AM_MEDIA_TYPE* currentmt = NULL;
     HRESULT hr = IAMStreamConfig_GetFormat(state->streamconfig, &currentmt);
@@ -422,7 +503,7 @@ static int dshow_set_format (zbar_video_t* vdo,
     assert(bih->biSize == state->bi_size);
 
     // must set fmt in subtype guid, because dshow doesn't consider the BMIH
-    make_fourcc_subtype(&currentmt->subtype, fmt);
+    make_fourcc_subtype(&currentmt->subtype, int_fmt);
 
     assert(bih);
     bih->biWidth = vdo->width;
@@ -439,19 +520,14 @@ static int dshow_set_format (zbar_video_t* vdo,
     case ZBAR_FMT_RGB_PACKED:
         bih->biBitCount = fmtdef->p.rgb.bpp * 8;
         break;
-        // note: MJPG belongs to class ZBAR_FMT_JPEG and seems to have always 24bpp, 
-        // which is queried after setting it
-    case ZBAR_FMT_JPEG:
-        //bih->biBitCount = 24;
-        //break;
     default:
         bih->biBitCount = 0;
     }
     bih->biClrUsed = bih->biClrImportant = 0;
-    bih->biCompression = fmt;
+    bih->biCompression = int_fmt;
 
     zprintf(4, "setting format: %.4s(%08x) " BIH_FMT "\n",
-            (char*)&fmt, fmt, BIH_FIELDS(bih));
+            (char*)&int_fmt, int_fmt, BIH_FIELDS(bih));
 
     hr = IAMStreamConfig_SetFormat(state->streamconfig, currentmt);
     CHECK_COM_ERROR(hr, "setting dshow format failed, hresult: 0x%lx\n", goto cleanup)
@@ -467,11 +543,23 @@ static int dshow_set_format (zbar_video_t* vdo,
     
     vih = (VIDEOINFOHEADER*) currentmt->pbFormat;
     bih = &vih->bmiHeader;
+    if(!dshow_is_fourcc_guid(&currentmt->subtype)
+       || bih->biCompression != int_fmt)
+        return(err_capture(vdo, SEV_ERROR, ZBAR_ERR_INVALID, __func__,
+                           "video format set ignored"));
 
     vdo->format = fmt;
     vdo->width = bih->biWidth;
     vdo->height = bih->biHeight;
     vdo->datalen = bih->biSizeImage;
+
+    // datalen was set based on the internal format, but sometimes it's
+    // different from the format reported to zbar processor
+    if (vdo->formats[fmt_ind] != state->int_formats[fmt_ind]) {
+        // See prepare_mjpg_format_mapping for possible differences
+        // between internal and zbar format.
+        vdo->datalen = vdo->width * vdo->height * 4; //BGR4
+    }
 
 cleanup:
     DeleteMediaType(currentmt);
@@ -490,6 +578,7 @@ static int dshow_init (zbar_video_t* vdo,
         return -1;
 
     video_state_t* state = vdo->state;
+    int fmt_ind = get_format_index(vdo->formats, fmt);
 
     // query stream parameters;
     REFERENCE_TIME avgtime_perframe = 0;
@@ -537,8 +626,7 @@ init:
 
     // special handling for MJPG streams:
     // we use the stock mjpeg decompressor filter
-    //if (fmt == fourcc('M','J','P','G'))
-    if (0)
+    if (state->int_formats[fmt_ind] == fourcc('M','J','P','G'))
     {
     // set up directshow graph
         IBaseFilter* mjpgdecompressor = NULL;
@@ -632,6 +720,7 @@ static int dshow_probe(zbar_video_t* vdo)
     zprintf(6, "number of supported formats/resolutions as reported by directshow: %d\n", resolutions);
 
     vdo->formats = calloc(resolutions+1, sizeof(uint32_t));
+    state->int_formats = calloc(resolutions+1, sizeof(uint32_t));
 
     // this is actually a VIDEO_STREAM_CONFIG_CAPS structure, which is mostly deprecated anyway,
     // so we just reserve enough buffer but treat it as opaque otherwise
@@ -649,21 +738,22 @@ static int dshow_probe(zbar_video_t* vdo)
         {
             VIDEOINFOHEADER* vih = (VIDEOINFOHEADER*) mt->pbFormat;
             zprintf(6, "supported format/resolution: " BIH_FMT "\n", BIH_FIELDS(&vih->bmiHeader));
-            if (dshow_is_fourcc_guid(&mt->subtype) &&  
-                // TODO: MJPG is compressed, but zbar can't handle this yet - 
-                // we would need to add the MJPEG Decompressor Filter to the capture graph
-                vih->bmiHeader.biCompression != fourcc('M','J','P','G'))
+            if (dshow_is_fourcc_guid(&mt->subtype))
             {
                 // first search for existing fourcc format
                 int i;
                 for (i = 0; i < n; ++i)
                 {
-                    if (vdo->formats[i] == vih->bmiHeader.biCompression)
+                    if (state->int_formats[i] == vih->bmiHeader.biCompression)
                         break;
                 }
                 // push back if not found
                 if (i == n)
-                    vdo->formats[n++] = vih->bmiHeader.biCompression;
+                {
+                    state->int_formats[n] = vih->bmiHeader.biCompression;
+                    vdo->formats[n] = vih->bmiHeader.biCompression;
+                    n++;
+                }
             }
         }
         // note: other format types could be possible, e.g. VIDEOINFOHEADER2...
@@ -672,8 +762,13 @@ static int dshow_probe(zbar_video_t* vdo)
     }
     free(caps);
 
-    vdo->formats = realloc(vdo->formats, (n + 1) * sizeof(uint32_t));
     zprintf(6, "number of supported fourcc formats: %d\n", n);
+
+    vdo->formats = realloc(vdo->formats, (n + 1) * sizeof(uint32_t));
+    state->int_formats = realloc(state->int_formats,
+                                 (n + 1) * sizeof(uint32_t));
+    prepare_mjpg_format_mapping(vdo);
+    dump_formats(vdo);
 
     if (n == 0)
         return -1;
@@ -955,3 +1050,5 @@ done:
 
     return ret;
 }
+
+// jedit file properties :noTabs=true:tabSize=4:indentSize=4:
