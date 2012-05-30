@@ -513,6 +513,8 @@ static int dshow_stop(zbar_video_t* vdo)
 static int dshow_set_format (zbar_video_t* vdo,
                            uint32_t fmt)
 {
+    int rc = 0;
+
     const zbar_format_def_t* fmtdef = _zbar_format_lookup(fmt);
     int fmt_ind = get_format_index(vdo->formats, fmt);
     if (!fmtdef->format || fmt_ind < 0)
@@ -572,10 +574,14 @@ static int dshow_set_format (zbar_video_t* vdo,
     
     vih = (VIDEOINFOHEADER*) currentmt->pbFormat;
     bih = &vih->bmiHeader;
-    if(!dshow_is_fourcc_guid(&currentmt->subtype)
-       || bih->biCompression != int_fmt)
-        return(err_capture(vdo, SEV_ERROR, ZBAR_ERR_INVALID, __func__,
-                           "video format set ignored"));
+
+    if (!dshow_is_fourcc_guid(&currentmt->subtype) || 
+        bih->biCompression != int_fmt)
+    {
+        rc = err_capture(vdo, SEV_ERROR, ZBAR_ERR_INVALID, __func__,
+                         "video format set ignored");
+        goto cleanup;
+    }
 
     vdo->format = fmt;
     vdo->width = bih->biWidth;
@@ -594,10 +600,11 @@ cleanup:
     DeleteMediaType(currentmt);
 
     if (FAILED(hr))
-        return(err_capture_int(vdo, SEV_ERROR, ZBAR_ERR_INVALID, __func__,
-                               "setting dshow format failed (hresult=%lx)", hr));
+        return err_capture_int(vdo, SEV_ERROR, ZBAR_ERR_INVALID, __func__,
+                               "setting dshow format failed (hresult=%lx)", hr);
     else
-        return 0;
+        // note: if an error happened it was already captured
+        return rc;
 }
 
 static int dshow_init (zbar_video_t* vdo,
@@ -671,16 +678,7 @@ init:
         hr = ICaptureGraphBuilder2_RenderStream(state->builder, NULL, &MEDIATYPE_Video, (IUnknown*)mjpgdecompressor, state->grabberbase, state->nullrenderer);
         CHECK_COM_ERROR(hr, "setting up capture graph 2, hresult: 0x%lx\n", goto mjpg_cleanup)
 
-        // set input information for zbar.
-        // 
-        // note: the mjpeg decompressor outputs MediaSubtype_RGB32 by default,
-        // its memory layout is BGR (see http://msdn.microsoft.com/en-us/library/windows/desktop/dd407253(v=vs.85).aspx);
-        // 
-        // TODO: on my dell latitude e6520 laptop the decompressor produces a bottom-up image, 
-        // which zbar doesn't seem to recognize, so the images are displayed upside-down.
-        // changing the format to MediaSubtype_RGB24 or MediaSubtype_RGB565 doesn't help either
-        vdo->format = fourcc('B','G','R','4');
-        vdo->datalen = vdo->width * vdo->height * 4;
+        // note: vdo->format and vdo->datalen have been set accordingly in dshow_set_format()
 
 mjpg_cleanup:
         IBaseFilter_Release(mjpgdecompressor);
