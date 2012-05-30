@@ -117,6 +117,28 @@ static void DeleteMediaType(AM_MEDIA_TYPE* mt)
     CoTaskMemFree(mt);
 }
 
+IPin* dshow_get_pin(IBaseFilter* filter, PIN_DIRECTION requested_direction)
+{
+    IPin* pin = NULL;
+
+    IEnumPins* enumerator;
+    IBaseFilter_EnumPins(filter, &enumerator);
+    while (IEnumPins_Next(enumerator, 1, &pin, 0) == S_OK)
+    {
+        PIN_DIRECTION pindir;
+        IPin_QueryDirection(pin, &pindir);
+        
+        if (pindir == requested_direction)
+            break;
+            
+        IPin_Release(pin);
+        pin = NULL;
+    }
+    IEnumPins_Release(enumerator);
+
+    return pin;  
+}
+
 static void make_fourcc_subtype(GUID* subtype, uint32_t fmt)
 {
     memcpy(subtype, &MEDIASUBTYPE_FOURCC_PLACEHOLDER, sizeof(GUID));
@@ -130,6 +152,12 @@ static int dshow_is_fourcc_guid(REFGUID subtype)
     make_fourcc_subtype(&clsid, subtype->Data1);
 
     return IsEqualGUID(subtype, &clsid);
+}
+
+static inline BITMAPINFOHEADER* dshow_access_bih(AM_MEDIA_TYPE* mt)
+{
+    VIDEOINFOHEADER* vih = (VIDEOINFOHEADER*) mt->pbFormat;
+    return &vih->bmiHeader;
 }
 
 /// Returns the index in <code>vdo->formats</code> of the given format.
@@ -156,6 +184,7 @@ struct video_state_s
     HANDLE notify;                    /* capture thread status change */
     int bi_size;                    /* size of bih */
     BITMAPINFOHEADER* bih;            /* video format details */
+    int do_flip_bitmap;                /* whether images are bottom-up and need to be vertically flipped */
     zbar_image_t* image;            /* currently capturing frame */
 
     IGraphBuilder* graph;            /* dshow graph manager */
@@ -255,8 +284,8 @@ static void flip_vert(zbar_image_t* const img, void* const srcBuf, int bpp)
     assert(img->datalen >= img->height * bytesPerLine);
     void *dst = (void*)img->data;
     void *src = srcBuf + (img->height - 1) * bytesPerLine;
-    int i;
-    for (i=0; i < img->height; i++) {
+    int i, n;
+    for (i=0, n = img->height; i < n; i++) {
         memcpy(dst, src, bytesPerLine);
         dst += bytesPerLine;
         src -= bytesPerLine;
@@ -387,16 +416,10 @@ HRESULT __stdcall zbar_samplegrabber_cb_BufferCB(ISampleGrabberCB* _This, double
 
         // The image needs to be copied now. Usually memcpy is ok,
         // but in case of MJPG the picture is upside-down.
-        // TODO: Discover that the picture is upside-down somehow
-        //       (through IPin::ConnectionMediaType for example)
-        int fmt_ind;
-        if ((fmt_ind = get_format_index(vdo->formats, img->format)) >= 0
-            && vdo->state->int_formats[fmt_ind] == fourcc('M','J','P','G'))
-        {
-            flip_vert(img, buffer, 32);
-        } else {
+        if (vdo->state->do_flip_bitmap)
+            flip_vert(img, buffer, vdo->state->bih->biBitCount);
+        else
             memcpy((void*)img->data, buffer, img->datalen);
-        }
 
         vdo->state->image = img;
         SetEvent(vdo->state->captured);
@@ -631,10 +654,6 @@ static int dshow_init (zbar_video_t* vdo,
         VIDEOINFOHEADER* vih = (VIDEOINFOHEADER*) currentmt->pbFormat;
         avgtime_perframe = vih->AvgTimePerFrame;
 
-        state->bi_size = vih->bmiHeader.biSize;
-        state->bih = realloc(state->bih, state->bi_size);
-        memcpy(state->bih, &vih->bmiHeader, state->bi_size);
-
         zprintf(3, "new format: %.4s(%08x) " BIH_FMT "\n",
                 (char*)&fmt, fmt, BIH_FIELDS(&vih->bmiHeader));
     }
@@ -660,11 +679,14 @@ init:
                            "setting capture callbacks"));
 
 
+
+    // set up directshow graph
+
+
     // special handling for MJPG streams:
     // we use the stock mjpeg decompressor filter
     if (state->int_formats[fmt_ind] == fourcc('M','J','P','G'))
     {
-    // set up directshow graph
         IBaseFilter* mjpgdecompressor = NULL;
         hr = CoCreateInstance(&CLSID_MjpegDec, NULL, CLSCTX_INPROC_SERVER, &IID_IBaseFilter, (void**)&mjpgdecompressor);
         CHECK_COM_ERROR(hr, "failed to create mjpeg decompressor filter (hresult=0x%lx)\n", return -1)
@@ -678,10 +700,9 @@ init:
         hr = ICaptureGraphBuilder2_RenderStream(state->builder, NULL, &MEDIATYPE_Video, (IUnknown*)mjpgdecompressor, state->grabberbase, state->nullrenderer);
         CHECK_COM_ERROR(hr, "setting up capture graph 2, hresult: 0x%lx\n", goto mjpg_cleanup)
 
-        // note: vdo->format and vdo->datalen have been set accordingly in dshow_set_format()
-
 mjpg_cleanup:
         IBaseFilter_Release(mjpgdecompressor);
+
         if (FAILED(hr))
             return -1;
     }
@@ -689,6 +710,49 @@ mjpg_cleanup:
     {
         hr = ICaptureGraphBuilder2_RenderStream(state->builder, NULL, &MEDIATYPE_Video, (IUnknown*)state->camera, state->grabberbase, state->nullrenderer);
         CHECK_COM_ERROR(hr, "setting up capture graph, hresult: 0x%lx\n", return -1)
+    }
+    
+    // scope: after the graph is built (and the pins connected) we query final 
+    // media type from sample grabber's input pin;
+    // 
+    // also adjust state's bih structure
+    {
+        IPin* inpin = NULL;
+        AM_MEDIA_TYPE input_mt = {};
+        
+        inpin = dshow_get_pin(state->grabberbase, PINDIR_INPUT);
+        assert(inpin);
+        
+        hr = IPin_ConnectionMediaType(inpin, &input_mt);
+        CHECK_COM_ERROR(hr, "couldn't query input media type from sample grabber (hresult=%lx)\n", goto cleanup1)
+        
+        
+        const BITMAPINFOHEADER* bih = dshow_access_bih(&input_mt);
+
+        // adjust state->bih
+        state->bi_size = bih->biSize;
+        state->bih = realloc(state->bih, state->bi_size);
+        memcpy(state->bih, bih, state->bi_size);
+
+
+        if (bih->biCompression == BI_RGB)
+        {
+            // check bitmap orientation:
+            // positive biHeight: bottom-up bitmap -> flip
+            // negative biHeight: top-down bitmap
+            // 
+            // note: this step is practically unnecessary because the sample 
+            // grabber doesn't support top-down video types anyway but I want 
+            // this to be independent
+            state->do_flip_bitmap = (bih->biHeight > 0);
+        }
+
+cleanup1:
+        DestroyMediaType(&input_mt);
+        COM_SAFE_RELEASE(&inpin);
+        
+        if (FAILED(hr))
+            return -1;
     }
 
     // directshow keeps ownership of the image passed to the callback,
@@ -708,6 +772,8 @@ mjpg_cleanup:
     vdo->iomode = VIDEO_USERPTR;
     // keep zbar's default
     //vdo->num_images = ZBAR_VIDEO_IMAGES_MAX;
+
+    // note: vdo->format and vdo->datalen have been set accordingly in dshow_set_format()
 
     zprintf(3, "initialized video capture: %x format, %"PRId64" frames/s\n",
             fmt, _100ns_unit / avgtime_perframe);
