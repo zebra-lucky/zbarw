@@ -716,7 +716,7 @@ mjpg_cleanup:
     }
     else
     {
-        hr = ICaptureGraphBuilder2_RenderStream(state->builder, NULL, &MEDIATYPE_Video, (IUnknown*)state->camera, state->grabberbase, state->nullrenderer);
+        hr = ICaptureGraphBuilder2_RenderStream(state->builder, &PIN_CATEGORY_PREVIEW, &MEDIATYPE_Video, (IUnknown*)state->camera, state->grabberbase, state->nullrenderer);
         CHECK_COM_ERROR(hr, "rendering filter graph, hresult: 0x%lx\n", (void)0)
         if (FAILED(hr))
         {
