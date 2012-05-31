@@ -649,8 +649,8 @@ cleanup:
     DeleteMediaType(currentmt);
 
     if (FAILED(hr))
-        return err_capture_int(vdo, SEV_ERROR, ZBAR_ERR_INVALID, __func__,
-                               "setting dshow format failed (hresult=%lx)", hr);
+        return err_capture(vdo, SEV_ERROR, ZBAR_ERR_INVALID, __func__,
+                           "setting dshow format failed");
     else
         // note: if an error happened it was already captured
         return rc;
@@ -686,16 +686,27 @@ static int dshow_init(zbar_video_t* vdo, uint32_t fmt)
     {
         IBaseFilter* mjpgdecompressor = NULL;
         hr = CoCreateInstance(&CLSID_MjpegDec, NULL, CLSCTX_INPROC_SERVER, &IID_IBaseFilter, (void**)&mjpgdecompressor);
-        CHECK_COM_ERROR(hr, "failed to create mjpeg decompressor filter (hresult=0x%lx)\n", return -1)
+        CHECK_COM_ERROR(hr, "failed to create mjpeg decompressor filter (hresult=0x%lx)\n", (void)0)
+        if (FAILED(hr))
+        {
+            return err_capture(vdo, SEV_ERROR, ZBAR_ERR_INVALID, __func__,
+                               "failed to create mjpeg decompressor filter");
+        }
 
         // add mjpeg decompressor to graph
         hr = IGraphBuilder_AddFilter(state->graph, mjpgdecompressor, L"MJPEG decompressor");
         CHECK_COM_ERROR(hr, "adding MJPEG decompressor, hresult: 0x%lx\n", goto mjpg_cleanup)
 
         hr = ICaptureGraphBuilder2_RenderStream(state->builder, &PIN_CATEGORY_PREVIEW, &MEDIATYPE_Video, (IUnknown*)state->camera, NULL, mjpgdecompressor);
-        CHECK_COM_ERROR(hr, "setting up capture graph 1, hresult: 0x%lx\n", goto mjpg_cleanup)
+        CHECK_COM_ERROR(hr, "rendering filter graph 1, hresult: 0x%lx\n", (void)0)
+        if (FAILED(hr))
+        {
+            err_capture(vdo, SEV_ERROR, ZBAR_ERR_INVALID, __func__,
+                        "rendering filter graph failed");
+            goto mjpg_cleanup;
+        }
         hr = ICaptureGraphBuilder2_RenderStream(state->builder, NULL, &MEDIATYPE_Video, (IUnknown*)mjpgdecompressor, state->grabberbase, state->nullrenderer);
-        CHECK_COM_ERROR(hr, "setting up capture graph 2, hresult: 0x%lx\n", goto mjpg_cleanup)
+        CHECK_COM_ERROR(hr, "rendering filter graph 2, hresult: 0x%lx\n", goto mjpg_cleanup)
 
 mjpg_cleanup:
         IBaseFilter_Release(mjpgdecompressor);
@@ -706,7 +717,13 @@ mjpg_cleanup:
     else
     {
         hr = ICaptureGraphBuilder2_RenderStream(state->builder, NULL, &MEDIATYPE_Video, (IUnknown*)state->camera, state->grabberbase, state->nullrenderer);
-        CHECK_COM_ERROR(hr, "setting up capture graph, hresult: 0x%lx\n", return -1)
+        CHECK_COM_ERROR(hr, "rendering filter graph, hresult: 0x%lx\n", (void)0)
+        if (FAILED(hr))
+        {
+            err_capture(vdo, SEV_ERROR, ZBAR_ERR_INVALID, __func__,
+                        "rendering filter graph failed");
+            goto mjpg_cleanup;
+        }
     }
     
     // scope: after the graph is built (and the pins connected) we query the
@@ -761,6 +778,7 @@ mjpg_cleanup:
             {
                 rc = -1;
                 zprintf(1, "mjpeg decompressor produces a different output format than RGB32\n");
+                goto cleanup1;
             }
         }
 
@@ -933,7 +951,10 @@ static int dshow_probe(zbar_video_t* vdo)
         LPOLESTR str = NULL;
         hr = StringFromCLSID(&currentmt->formattype, &str);
         CHECK_COM_ERROR(hr, "StringFromCLSID() failed (hresult=%lx)\n", (void)0)
-        zwprintf(1, L"encountered unsupported initial format, no VIDEOINFOHEADER video format type: %s\n", str);
+        err_capture(vdo, SEV_ERROR, ZBAR_ERR_INVALID, __func__,
+                    "unsupported initial format (no VIDEOINFOHEADER)");
+        zwprintf(1, L"encountered unsupported initial format, no VIDEOINFOHEADER video format type: %s\n", 
+                 str);
         CoTaskMemFree(str);
         goto freemt;
     }
@@ -946,6 +967,8 @@ static int dshow_probe(zbar_video_t* vdo)
         LPOLESTR str = NULL;
         hr = StringFromCLSID(&currentmt->subtype, &str);
         CHECK_COM_ERROR(hr, "StringFromCLSID() failed (hresult=%lx)\n", (void)0)
+        err_capture(vdo, SEV_ERROR, ZBAR_ERR_INVALID, __func__,
+                    "unsupported initial format");
         zwprintf(1, L"encountered unsupported initial format: %s\n", str);
         CoTaskMemFree(str);
         goto freemt;
