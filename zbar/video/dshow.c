@@ -96,6 +96,9 @@ ZBAR_DEFINE_STATIC_GUID(MEDIASUBTYPE_FOURCC_PLACEHOLDER,
 
 static const REFERENCE_TIME _100ns_unit = 1*1000*1000*1000 / 100;
 
+// format to which we convert MJPG streams
+static const int mjpg_conversion_fmt = fourcc('B','G','R','4');
+static const int mjpg_conversion_fmt_bpp = 32;
 
 
 // Destroy (Release) the format block for a media type.
@@ -277,7 +280,7 @@ static void prepare_mjpg_format_mapping(zbar_video_t* vdo)
 {
     video_state_t* state = vdo->state;
     /// The format we will convert MJPG to
-    uint32_t fmtConv = fourcc('B','G','R','4');
+    uint32_t fmtConv = mjpg_conversion_fmt;
 
     int iMjpg = get_format_index(state->int_formats, fourcc('M','J','P','G'));
     if (iMjpg < 0)
@@ -751,8 +754,10 @@ mjpg_cleanup:
             // provide it.
             // If the output isn't RGB32 we could configure the decompressor 
             // AND the sample grabber for RGB32 but we leave that for now.
-            assert(bih->biCompression == BI_RGB  &&  bih->biBitCount == 32);
-            if (bih->biCompression != BI_RGB  ||  bih->biBitCount != 32)
+            assert(bih->biCompression == BI_RGB &&  
+                   bih->biBitCount == mjpg_conversion_fmt_bpp);
+            if (bih->biCompression != BI_RGB ||  
+                bih->biBitCount != mjpg_conversion_fmt_bpp)
             {
                 rc = -1;
                 zprintf(1, "mjpeg decompressor produces a different output format than RGB32\n");
