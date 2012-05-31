@@ -120,7 +120,8 @@ static void DeleteMediaType(AM_MEDIA_TYPE* mt)
     CoTaskMemFree(mt);
 }
 
-IPin* dshow_get_pin(IBaseFilter* filter, PIN_DIRECTION requested_direction)
+static IPin* dshow_get_pin(IBaseFilter* filter, 
+                           PIN_DIRECTION requested_direction)
 {
     IPin* pin = NULL;
 
