@@ -59,6 +59,9 @@ ZBAR_DEFINE_STATIC_GUID(MEDIATYPE_Video,
 // 05589f80-c356-11ce-bf01-00aa0055595a        FORMAT_VideoInfo
 ZBAR_DEFINE_STATIC_GUID(FORMAT_VideoInfo,
 0x05589f80, 0xc356, 0x11ce, 0xbf, 0x01, 0x00, 0xaa, 0x00, 0x55, 0x59, 0x5a);
+// e436eb7e-524f-11ce-9f53-0020af0ba770            MEDIASUBTYPE_RGB32
+ZBAR_DEFINE_STATIC_GUID(MEDIASUBTYPE_RGB32,
+0xe436eb7e, 0x524f, 0x11ce, 0x9f, 0x53, 0x00, 0x20, 0xaf, 0x0b, 0xa7, 0x70);
 
 // fb6c4282-0353-11d1-905f-0000c0cc16ba
 ZBAR_DEFINE_STATIC_GUID(PIN_CATEGORY_PREVIEW,
@@ -97,6 +100,7 @@ ZBAR_DEFINE_STATIC_GUID(MEDIASUBTYPE_FOURCC_PLACEHOLDER,
 static const REFERENCE_TIME _100ns_unit = 1*1000*1000*1000 / 100;
 
 // format to which we convert MJPG streams
+static const REFGUID mjpg_conversion_mediatype = &MEDIASUBTYPE_RGB32;
 static const int mjpg_conversion_fmt = fourcc('B','G','R','4');
 static const int mjpg_conversion_fmt_bpp = 32;
 
@@ -698,14 +702,26 @@ static int dshow_init(zbar_video_t* vdo, uint32_t fmt)
         hr = IGraphBuilder_AddFilter(state->graph, mjpgdecompressor, L"MJPEG decompressor");
         CHECK_COM_ERROR(hr, "adding MJPEG decompressor, hresult: 0x%lx\n", goto mjpg_cleanup)
 
+        // explicitly convert MJPG to RGB32
+        // (sample grabber will only accept this format)
+        // 
+        // note: the mjpeg decompressor's output seems to be RGB32 (BGR4) 
+        // by default. 
+        // This fact has been a decisive factor to choosing the mapping 
+        // (BGR4 [zbar input] -> MJPG [camera output]).
+        // Because zbar requests BGR4 we have to ensure that we really do 
+        // provide it.
+        AM_MEDIA_TYPE conv_mt = {};
+        conv_mt.majortype = MEDIATYPE_Video;
+        conv_mt.subtype = *mjpg_conversion_mediatype;
+        hr = ISampleGrabber_SetMediaType(state->samplegrabber, &conv_mt);
+        CHECK_COM_ERROR(hr, "setting mjpg conversion media type, hresult: 0x%lx\n", goto mjpg_cleanup)
+        // no need to destroy conv_mt
+
+
         hr = ICaptureGraphBuilder2_RenderStream(state->builder, &PIN_CATEGORY_PREVIEW, &MEDIATYPE_Video, (IUnknown*)state->camera, NULL, mjpgdecompressor);
-        CHECK_COM_ERROR(hr, "rendering filter graph 1, hresult: 0x%lx\n", (void)0)
-        if (FAILED(hr))
-        {
-            err_capture(vdo, SEV_ERROR, ZBAR_ERR_INVALID, __func__,
-                        "rendering filter graph failed");
-            goto mjpg_cleanup;
-        }
+        CHECK_COM_ERROR(hr, "rendering filter graph 1, hresult: 0x%lx\n", goto mjpg_cleanup)
+
         hr = ICaptureGraphBuilder2_RenderStream(state->builder, NULL, &MEDIATYPE_Video, (IUnknown*)mjpgdecompressor, state->grabberbase, state->nullrenderer);
         CHECK_COM_ERROR(hr, "rendering filter graph 2, hresult: 0x%lx\n", goto mjpg_cleanup)
 
@@ -713,7 +729,10 @@ mjpg_cleanup:
         IBaseFilter_Release(mjpgdecompressor);
 
         if (FAILED(hr))
-            return -1;
+        {
+            return err_capture(vdo, SEV_ERROR, ZBAR_ERR_INVALID, __func__,
+                               "rendering filter graph failed");
+        }
     }
     else
     {
@@ -760,27 +779,6 @@ mjpg_cleanup:
             // grabber doesn't support top-down video types anyway but I want 
             // this to be independent
             state->do_flip_bitmap = (bih->biHeight > 0);
-        }
-
-
-        if (state->int_formats[fmt_ind] == fourcc('M','J','P','G'))
-        {
-            // the mjpeg decompressor's output seems to be RGB32 (BGR4) by default. 
-            // This fact has been a decisive factor to choosing the mapping 
-            // (BGR4 [zbar input] -> MJPG [camera output]).
-            // Because zbar requests BGR4 we have to ensure that we really do 
-            // provide it.
-            // If the output isn't RGB32 we could configure the decompressor 
-            // AND the sample grabber for RGB32 but we leave that for now.
-            assert(bih->biCompression == BI_RGB &&  
-                   bih->biBitCount == mjpg_conversion_fmt_bpp);
-            if (bih->biCompression != BI_RGB ||  
-                bih->biBitCount != mjpg_conversion_fmt_bpp)
-            {
-                rc = -1;
-                zprintf(1, "mjpeg decompressor produces a different output format than RGB32\n");
-                goto cleanup1;
-            }
         }
 
 cleanup1:
