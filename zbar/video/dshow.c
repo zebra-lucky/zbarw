@@ -714,6 +714,7 @@ static int dshow_init(zbar_video_t* vdo, uint32_t fmt)
         AM_MEDIA_TYPE conv_mt = {};
         conv_mt.majortype = MEDIATYPE_Video;
         conv_mt.subtype = *mjpg_conversion_mediatype;
+        conv_mt.formattype = FORMAT_VideoInfo;
         hr = ISampleGrabber_SetMediaType(state->samplegrabber, &conv_mt);
         CHECK_COM_ERROR(hr, "setting mjpg conversion media type, hresult: 0x%lx\n", goto mjpg_cleanup)
         // no need to destroy conv_mt
@@ -736,8 +737,20 @@ mjpg_cleanup:
     }
     else
     {
+        // ensure (again) that the sample grabber gets only 
+        // video media types with VIDEOINFOHEADER
+        AM_MEDIA_TYPE grab_mt = {};
+        grab_mt.majortype = MEDIATYPE_Video;
+        grab_mt.formattype = FORMAT_VideoInfo;
+        hr = ISampleGrabber_SetMediaType(state->samplegrabber, &grab_mt);
+        CHECK_COM_ERROR(hr, "setting sample grabber media type, hresult: 0x%lx\n", goto render_cleanup)
+        // no need to destroy grab_mt
+
+
         hr = ICaptureGraphBuilder2_RenderStream(state->builder, &PIN_CATEGORY_PREVIEW, &MEDIATYPE_Video, (IUnknown*)state->camera, state->grabberbase, state->nullrenderer);
-        CHECK_COM_ERROR(hr, "rendering filter graph, hresult: 0x%lx\n", (void)0)
+        CHECK_COM_ERROR(hr, "rendering filter graph, hresult: 0x%lx\n", goto render_cleanup)
+
+render_cleanup:		
         if (FAILED(hr))
         {
             return err_capture(vdo, SEV_ERROR, ZBAR_ERR_INVALID, __func__,
