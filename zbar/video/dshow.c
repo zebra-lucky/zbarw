@@ -740,9 +740,8 @@ mjpg_cleanup:
         CHECK_COM_ERROR(hr, "rendering filter graph, hresult: 0x%lx\n", (void)0)
         if (FAILED(hr))
         {
-            err_capture(vdo, SEV_ERROR, ZBAR_ERR_INVALID, __func__,
-                        "rendering filter graph failed");
-            goto mjpg_cleanup;
+            return err_capture(vdo, SEV_ERROR, ZBAR_ERR_INVALID, __func__,
+                               "rendering filter graph failed");
         }
     }
     
