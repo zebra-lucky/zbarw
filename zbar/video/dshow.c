@@ -750,7 +750,7 @@ mjpg_cleanup:
         hr = ICaptureGraphBuilder2_RenderStream(state->builder, &PIN_CATEGORY_PREVIEW, &MEDIATYPE_Video, (IUnknown*)state->camera, state->grabberbase, state->nullrenderer);
         CHECK_COM_ERROR(hr, "rendering filter graph, hresult: 0x%lx\n", goto render_cleanup)
 
-render_cleanup:		
+render_cleanup:
         if (FAILED(hr))
         {
             return err_capture(vdo, SEV_ERROR, ZBAR_ERR_INVALID, __func__,
