@@ -49,6 +49,9 @@ ZBAR_DEFINE_STATIC_GUID(CLSID_VideoInputDeviceCategory,
 // BF87B6E1-8C27-11d0-B3F0-00AA003761C5     New Capture graph building
 ZBAR_DEFINE_STATIC_GUID(CLSID_CaptureGraphBuilder2,
 0xBF87B6E1, 0x8C27, 0x11d0, 0xB3, 0xF0, 0x0, 0xAA, 0x00, 0x37, 0x61, 0xC5);
+// {301056D0-6DFF-11d2-9EEB-006008039E37}
+ZBAR_DEFINE_STATIC_GUID(CLSID_MjpegDec,
+0x301056d0, 0x6dff, 0x11d2, 0x9e, 0xeb, 0x0, 0x60, 0x8, 0x3, 0x9e, 0x37);
 
 // 73646976-0000-0010-8000-00AA00389B71  'vids' == MEDIATYPE_Video
 ZBAR_DEFINE_STATIC_GUID(MEDIATYPE_Video,
@@ -56,6 +59,9 @@ ZBAR_DEFINE_STATIC_GUID(MEDIATYPE_Video,
 // 05589f80-c356-11ce-bf01-00aa0055595a        FORMAT_VideoInfo
 ZBAR_DEFINE_STATIC_GUID(FORMAT_VideoInfo,
 0x05589f80, 0xc356, 0x11ce, 0xbf, 0x01, 0x00, 0xaa, 0x00, 0x55, 0x59, 0x5a);
+// e436eb7e-524f-11ce-9f53-0020af0ba770            MEDIASUBTYPE_RGB32
+ZBAR_DEFINE_STATIC_GUID(MEDIASUBTYPE_RGB32,
+0xe436eb7e, 0x524f, 0x11ce, 0x9f, 0x53, 0x00, 0x20, 0xaf, 0x0b, 0xa7, 0x70);
 
 // fb6c4282-0353-11d1-905f-0000c0cc16ba
 ZBAR_DEFINE_STATIC_GUID(PIN_CATEGORY_PREVIEW,
@@ -93,6 +99,10 @@ ZBAR_DEFINE_STATIC_GUID(MEDIASUBTYPE_FOURCC_PLACEHOLDER,
 
 static const REFERENCE_TIME _100ns_unit = 1*1000*1000*1000 / 100;
 
+// format to which we convert MJPG streams
+static const REFGUID mjpg_conversion_mediatype = &MEDIASUBTYPE_RGB32;
+static const int mjpg_conversion_fmt = fourcc('B','G','R','4');
+static const int mjpg_conversion_fmt_bpp = 32;
 
 
 // Destroy (Release) the format block for a media type.
@@ -114,6 +124,29 @@ static void DeleteMediaType(AM_MEDIA_TYPE* mt)
     CoTaskMemFree(mt);
 }
 
+static IPin* dshow_get_pin(IBaseFilter* filter, 
+                           PIN_DIRECTION requested_direction)
+{
+    IPin* pin = NULL;
+
+    IEnumPins* enumerator;
+    IBaseFilter_EnumPins(filter, &enumerator);
+    while (IEnumPins_Next(enumerator, 1, &pin, 0) == S_OK)
+    {
+        PIN_DIRECTION pindir;
+        IPin_QueryDirection(pin, &pindir);
+        
+        if (pindir == requested_direction)
+            break;
+            
+        IPin_Release(pin);
+        pin = NULL;
+    }
+    IEnumPins_Release(enumerator);
+
+    return pin;  
+}
+
 static void make_fourcc_subtype(GUID* subtype, uint32_t fmt)
 {
     memcpy(subtype, &MEDIASUBTYPE_FOURCC_PLACEHOLDER, sizeof(GUID));
@@ -129,30 +162,76 @@ static int dshow_is_fourcc_guid(REFGUID subtype)
     return IsEqualGUID(subtype, &clsid);
 }
 
+/** Check whether the given AM_MEDIA_TYPE contains a 
+    VIDEOINFOHEADER block.
+ */
+static inline int dshow_has_vih(AM_MEDIA_TYPE* mt)
+{
+    // documentation for AM_MEDIA_TYPE emphasizes to do a thorough check 
+    int isvih = (IsEqualGUID(&mt->formattype, &FORMAT_VideoInfo) && 
+                 mt->cbFormat >= sizeof(VIDEOINFOHEADER) && 
+                 mt->pbFormat);
+    return isvih;
+}
+
+static inline BITMAPINFOHEADER* dshow_access_bih(AM_MEDIA_TYPE* mt)
+{
+    VIDEOINFOHEADER* vih = (VIDEOINFOHEADER*) mt->pbFormat;
+    return &vih->bmiHeader;
+}
+
+/// Flips the image vertically copying it from srcBuf to img.
+/** @param bpp Bits Per Pixel */
+static void flip_vert(zbar_image_t* const img, void* const srcBuf, int bpp)
+{
+    // The formula below works only if bpp%8==0
+    long bytesPerLine = 1L * img->width * bpp / 8;
+    assert(img->datalen >= img->height * bytesPerLine);
+    void *dst = (void*)img->data;
+    void *src = srcBuf + (img->height - 1) * bytesPerLine;
+    int i, n;
+    for (i=0, n = img->height; i < n; i++) {
+        memcpy(dst, src, bytesPerLine);
+        dst += bytesPerLine;
+        src -= bytesPerLine;
+    }
+    assert(src + bytesPerLine == srcBuf);
+}
 
 
 struct video_state_s
 {
-    zbar_thread_t thread;            /* capture message pump */
+    zbar_thread_t thread;             /* capture message pump */
     HANDLE captured;
     HANDLE notify;                    /* capture thread status change */
-    int bi_size;                    /* size of bih */
-    BITMAPINFOHEADER* bih;            /* video format details */
-    zbar_image_t* image;            /* currently capturing frame */
+    int bi_size;                      /* size of bih */
+    BITMAPINFOHEADER* bih;            /* video format details of grabbed samples;
+                                         format might be among fourcc or BI_RGB */
+    int do_flip_bitmap;               /* whether uncompressed bitmap images are 
+                                         bottom-up and need to be vertically 
+                                         flipped */
+    zbar_image_t* image;              /* current capturing frame */
 
-    IGraphBuilder* graph;            /* dshow graph manager */
-    IMediaControl* mediacontrol;    /* dshow graph control */
-    IBaseFilter* camera;            /* dshow source filter */
+    IGraphBuilder* graph;             /* dshow graph manager */
+    IMediaControl* mediacontrol;      /* dshow graph control */
+    IBaseFilter* camera;              /* dshow source filter */
     ISampleGrabber* samplegrabber;    /* dshow intermediate filter */
-    IBaseFilter* grabberbase;        /* samplegrabber's IBaseFilter interface */
+    IBaseFilter* grabberbase;         /* samplegrabber's IBaseFilter interface */
     IBaseFilter* nullrenderer;
     ICaptureGraphBuilder2* builder;
-    IAMStreamConfig* streamconfig;    /* dshow stream configuration interface */
+    IAMStreamConfig* camstreamconfig; /* dshow stream configuration interface */
+    /// 0 terminated list of supported internal formats.
+    /** The size of this
+      * array matches the size of {@link zbar_video_s#formats} array and
+      * the consecutive entries correspond to each other, making a mapping
+      * between internal (camera) formats and zbar formats
+      * (presented to zbar processor). */
+    uint32_t *int_formats;
 };
 
 static void dshow_destroy_video_state_t(video_state_t* state)
 {
-    COM_SAFE_RELEASE(&state->streamconfig);
+    COM_SAFE_RELEASE(&state->camstreamconfig);
     COM_SAFE_RELEASE(&state->builder);
     COM_SAFE_RELEASE(&state->nullrenderer);
     COM_SAFE_RELEASE(&state->grabberbase);
@@ -163,6 +242,79 @@ static void dshow_destroy_video_state_t(video_state_t* state)
 
     if (state->captured)
         CloseHandle(state->captured);
+
+    free(state->bih);
+    free(state->int_formats);
+}
+
+/// Returns the index in <code>vdo->formats</code> of the given format.
+/** If not found, returns -1 */
+int get_format_index(uint32_t* fmts, uint32_t fmt0)
+{
+    uint32_t *fmt;
+    int i = 0;
+    for (fmt = fmts; *fmt; fmt++) {
+        if (*fmt == fmt0)
+            break;
+        i++;
+    }
+    if (*fmt)
+        return i;
+    else
+        return -1;
+}
+
+static void dump_formats(zbar_video_t* vdo)
+{
+    video_state_t* state = vdo->state;
+    uint32_t *fmt, *int_fmt;
+    zprintf(8, "Detected formats: (internal) / (translated for zbar)\n");
+    fmt = vdo->formats;
+    int_fmt = state->int_formats;
+    while (*fmt) {
+        zprintf(8, "  %.4s / %.4s\n", (char*)int_fmt, (char*)fmt);
+        fmt++; int_fmt++;
+    }
+}
+
+/// Maps internal format MJPG (if found) to a format known to
+/// zbar.
+/** The conversion will be done by dshow mjpeg decompressor
+  * before passing the image to zbar. */
+static void prepare_mjpg_format_mapping(zbar_video_t* vdo)
+{
+    video_state_t* state = vdo->state;
+    /// The format we will convert MJPG to
+    uint32_t fmtConv = mjpg_conversion_fmt;
+
+    int iMjpg = get_format_index(state->int_formats, fourcc('M','J','P','G'));
+    if (iMjpg < 0)
+        return;
+    assert(vdo->formats[iMjpg] == fourcc('M','J','P','G'));
+
+    // If we already have fmtConv, it will lead to duplicating it in
+    // external formats.
+    // We can't leave it this way, because when zbar wants to use fmtConv
+    // we must have only one internal format for that.
+    // It's better to drop MJPG then, as it's a compressed format and
+    // we prefer better quality images.
+
+    // The index of fmtConv before mapping mjpg to fmtConv
+    int iMjpgConv = get_format_index(state->int_formats, fmtConv);
+
+    if (iMjpgConv >= 0) {
+        // remove the iMjpgConv entry by moving the following entries by 1
+        int i;
+        for (i=iMjpgConv; vdo->formats[i]; i++) {
+            vdo->formats[i] = vdo->formats[i+1];
+            state->int_formats[i] = state->int_formats[i+1];
+        }
+        // The number of formats is reduced by 1 now, but to realloc just
+        // to save 2 times 4 bytes? Too much fuss.
+    }
+    else {
+        vdo->formats[iMjpg] = fmtConv;
+    }
 }
 
 
@@ -286,7 +438,14 @@ HRESULT __stdcall zbar_samplegrabber_cb_BufferCB(ISampleGrabberCB* _This, double
         zprintf(16, "copying into img: %p (srcidx: %d, data: %p, len: %ld)\n", img, img->srcidx, img->data, img->datalen);
 
         assert(img->datalen == bufferlen);
-        memcpy((void*)img->data, buffer, img->datalen);
+
+        // The image needs to be copied now. Usually memcpy is ok,
+        // but in case of MJPG the picture is upside-down.
+        if (vdo->state->do_flip_bitmap)
+            flip_vert(img, buffer, vdo->state->bih->biBitCount);
+        else
+            memcpy((void*)img->data, buffer, img->datalen);
+
         vdo->state->image = img;
         SetEvent(vdo->state->captured);
     }
@@ -402,29 +561,37 @@ static int dshow_stop(zbar_video_t* vdo)
 static int dshow_set_format (zbar_video_t* vdo,
                            uint32_t fmt)
 {
+    int rc = 0;
+
     const zbar_format_def_t* fmtdef = _zbar_format_lookup(fmt);
-    if (!fmtdef->format)
+    int fmt_ind = get_format_index(vdo->formats, fmt);
+    if (!fmtdef->format || fmt_ind < 0)
         return(err_capture_int(vdo, SEV_ERROR, ZBAR_ERR_INVALID, __func__,
                                "unsupported vfw format: %x", fmt));
 
     video_state_t* state = vdo->state;
+    int int_fmt = state->int_formats[fmt_ind];
 
+    
+    // first, get current camera format
+    
     AM_MEDIA_TYPE* currentmt = NULL;
-    HRESULT hr = IAMStreamConfig_GetFormat(state->streamconfig, &currentmt);
+    HRESULT hr = IAMStreamConfig_GetFormat(state->camstreamconfig, &currentmt);
     CHECK_COM_ERROR(hr, "queried currentmt, hresult: 0x%lx\n", return -1);
     
-    VIDEOINFOHEADER* vih = (VIDEOINFOHEADER*) currentmt->pbFormat;
-    BITMAPINFOHEADER* bih = &vih->bmiHeader;
+    assert(dshow_has_vih(currentmt));
+    BITMAPINFOHEADER* bih = dshow_access_bih(currentmt);
 
-    assert(bih->biSize == state->bi_size);
+    
+    // then, adjust the format
 
     // must set fmt in subtype guid, because dshow doesn't consider the BMIH
-    make_fourcc_subtype(&currentmt->subtype, fmt);
+    make_fourcc_subtype(&currentmt->subtype, int_fmt);
 
-    assert(bih);
     bih->biWidth = vdo->width;
     bih->biHeight = vdo->height;
-    switch(fmtdef->group) {
+    switch(fmtdef->group)
+    {
     case ZBAR_FMT_GRAY:
         bih->biBitCount = 8;
         break;
@@ -440,13 +607,13 @@ static int dshow_set_format (zbar_video_t* vdo,
         bih->biBitCount = 0;
     }
     bih->biClrUsed = bih->biClrImportant = 0;
-    bih->biCompression = fmt;
+    bih->biCompression = int_fmt;
 
-    zprintf(4, "setting format: %.4s(%08x) " BIH_FMT "\n",
-            (char*)&fmt, fmt, BIH_FIELDS(bih));
+    zprintf(4, "setting camera format: %.4s(%08x) " BIH_FMT "\n",
+            (char*)&int_fmt, int_fmt, BIH_FIELDS(bih));
 
-    hr = IAMStreamConfig_SetFormat(state->streamconfig, currentmt);
-    CHECK_COM_ERROR(hr, "setting dshow format failed, hresult: 0x%lx\n", goto cleanup)
+    hr = IAMStreamConfig_SetFormat(state->camstreamconfig, currentmt);
+    CHECK_COM_ERROR(hr, "setting camera format failed, hresult: 0x%lx\n", goto cleanup)
 
     DeleteMediaType(currentmt);
     
@@ -454,70 +621,57 @@ static int dshow_set_format (zbar_video_t* vdo,
     // re-read format, image data size might have changed
     
     currentmt = NULL;
-    hr = IAMStreamConfig_GetFormat(state->streamconfig, &currentmt);
+    hr = IAMStreamConfig_GetFormat(state->camstreamconfig, &currentmt);
     CHECK_COM_ERROR(hr, "queried currentmt, hresult: 0x%lx\n", return -1);
     
-    vih = (VIDEOINFOHEADER*) currentmt->pbFormat;
-    bih = &vih->bmiHeader;
+    bih = dshow_access_bih(currentmt);
+
+    if (!dshow_is_fourcc_guid(&currentmt->subtype) || 
+        bih->biCompression != int_fmt)
+    {
+        rc = err_capture(vdo, SEV_ERROR, ZBAR_ERR_INVALID, __func__,
+                         "video format set ignored");
+        goto cleanup;
+    }
 
     vdo->format = fmt;
     vdo->width = bih->biWidth;
     vdo->height = bih->biHeight;
     vdo->datalen = bih->biSizeImage;
 
+    // datalen was set based on the internal format, but sometimes it's
+    // different from the format reported to zbar processor
+    if (vdo->formats[fmt_ind] != state->int_formats[fmt_ind]) {
+        // See prepare_mjpg_format_mapping for possible differences
+        // between internal and zbar format.
+        vdo->datalen = vdo->width * vdo->height * 4; //BGR4
+    }
+
+    zprintf(4, "set camera format: %.4s(%08x) " BIH_FMT "\n",
+            (char*)&int_fmt, int_fmt, BIH_FIELDS(bih));
+
 cleanup:
     DeleteMediaType(currentmt);
 
     if (FAILED(hr))
-        return(err_capture_int(vdo, SEV_ERROR, ZBAR_ERR_INVALID, __func__,
-                               "setting dshow format failed (hresult=%lx)", hr));
+        return err_capture(vdo, SEV_ERROR, ZBAR_ERR_INVALID, __func__,
+                           "setting dshow format failed");
     else
-        return 0;
+        // note: if an error happened it was already captured
+        return rc;
 }
 
-static int dshow_init (zbar_video_t* vdo,
-                     uint32_t fmt)
+static int dshow_init(zbar_video_t* vdo, uint32_t fmt)
 {
     if (dshow_set_format(vdo, fmt))
         return -1;
 
+
+    HRESULT hr;
     video_state_t* state = vdo->state;
-
-    // query stream parameters;
-    REFERENCE_TIME avgtime_perframe = 0;
-    
-    AM_MEDIA_TYPE* currentmt;
-    HRESULT hr = IAMStreamConfig_GetFormat(state->streamconfig, &currentmt);
-    CHECK_COM_ERROR(hr, "querying current format failed, hresult: 0x%lx\n", goto init)
-
-    // check whether we're dealing with a VIDEOINFOHEADER
-    if (IsEqualGUID(&currentmt->formattype, &FORMAT_VideoInfo) && 
-        currentmt->cbFormat >= sizeof(VIDEOINFOHEADER) && 
-        currentmt->pbFormat)
-    {
-        VIDEOINFOHEADER* vih = (VIDEOINFOHEADER*) currentmt->pbFormat;
-        avgtime_perframe = vih->AvgTimePerFrame;
-
-        state->bi_size = vih->bmiHeader.biSize;
-        state->bih = realloc(state->bih, state->bi_size);
-        memcpy(state->bih, &vih->bmiHeader, state->bi_size);
-
-        zprintf(3, "new format: %.4s(%08x) " BIH_FMT "\n",
-                (char*)&fmt, fmt, BIH_FIELDS(&vih->bmiHeader));
-    }
-    else
-    {
-        LPOLESTR str = NULL;
-        hr = StringFromCLSID(&currentmt->formattype, &str);
-        CHECK_COM_ERROR(hr, "StringFromCLSID() failed (hresult=%lx)\n", (void)0)
-        zwprintf(1, L"encountered unsupported video format type: %s\n", str);
-        CoTaskMemFree(str);
-    }
-    DeleteMediaType(currentmt);
+    int fmt_ind = get_format_index(vdo->formats, fmt);
 
 
-init:
-    ;
     // install sample grabber callback
     ISampleGrabberCB* grabbercb = (ISampleGrabberCB*)new_zbar_samplegrabber_cb(vdo);
     hr = ISampleGrabber_SetCallback(vdo->state->samplegrabber, grabbercb, 1);
@@ -526,9 +680,147 @@ init:
         return(err_capture(vdo, SEV_ERROR, ZBAR_ERR_BUSY, __func__,
                            "setting capture callbacks"));
 
+
+
     // set up directshow graph
-    hr = ICaptureGraphBuilder2_RenderStream(state->builder, &PIN_CATEGORY_PREVIEW, &MEDIATYPE_Video, (IUnknown*)state->camera, state->grabberbase, state->nullrenderer);
-    CHECK_COM_ERROR(hr, "setting up capture graph, hresult: 0x%lx\n", return -1)
+
+
+    // special handling for MJPG streams:
+    // we use the stock mjpeg decompressor filter
+    if (state->int_formats[fmt_ind] == fourcc('M','J','P','G'))
+    {
+        IBaseFilter* mjpgdecompressor = NULL;
+        hr = CoCreateInstance(&CLSID_MjpegDec, NULL, CLSCTX_INPROC_SERVER, &IID_IBaseFilter, (void**)&mjpgdecompressor);
+        CHECK_COM_ERROR(hr, "failed to create mjpeg decompressor filter (hresult=0x%lx)\n", (void)0)
+        if (FAILED(hr))
+        {
+            return err_capture(vdo, SEV_ERROR, ZBAR_ERR_INVALID, __func__,
+                               "failed to create mjpeg decompressor filter");
+        }
+
+        // add mjpeg decompressor to graph
+        hr = IGraphBuilder_AddFilter(state->graph, mjpgdecompressor, L"MJPEG decompressor");
+        CHECK_COM_ERROR(hr, "adding MJPEG decompressor, hresult: 0x%lx\n", goto mjpg_cleanup)
+
+        // explicitly convert MJPG to RGB32
+        // (sample grabber will only accept this format)
+        // 
+        // note: the mjpeg decompressor's output seems to be RGB32 (BGR4) 
+        // by default. 
+        // This fact has been a decisive factor to choosing the mapping 
+        // (BGR4 [zbar input] -> MJPG [camera output]).
+        // Because zbar requests BGR4 we have to ensure that we really do 
+        // provide it.
+        AM_MEDIA_TYPE conv_mt = {};
+        conv_mt.majortype = MEDIATYPE_Video;
+        conv_mt.subtype = *mjpg_conversion_mediatype;
+        conv_mt.formattype = FORMAT_VideoInfo;
+        hr = ISampleGrabber_SetMediaType(state->samplegrabber, &conv_mt);
+        CHECK_COM_ERROR(hr, "setting mjpg conversion media type, hresult: 0x%lx\n", goto mjpg_cleanup)
+        // no need to destroy conv_mt
+
+
+        hr = ICaptureGraphBuilder2_RenderStream(state->builder, &PIN_CATEGORY_PREVIEW, &MEDIATYPE_Video, (IUnknown*)state->camera, NULL, mjpgdecompressor);
+        CHECK_COM_ERROR(hr, "rendering filter graph 1, hresult: 0x%lx\n", goto mjpg_cleanup)
+
+        hr = ICaptureGraphBuilder2_RenderStream(state->builder, NULL, &MEDIATYPE_Video, (IUnknown*)mjpgdecompressor, state->grabberbase, state->nullrenderer);
+        CHECK_COM_ERROR(hr, "rendering filter graph 2, hresult: 0x%lx\n", goto mjpg_cleanup)
+
+mjpg_cleanup:
+        IBaseFilter_Release(mjpgdecompressor);
+
+        if (FAILED(hr))
+        {
+            return err_capture(vdo, SEV_ERROR, ZBAR_ERR_INVALID, __func__,
+                               "rendering filter graph failed");
+        }
+    }
+    else
+    {
+        // ensure (again) that the sample grabber gets only 
+        // video media types with VIDEOINFOHEADER
+        AM_MEDIA_TYPE grab_mt = {};
+        grab_mt.majortype = MEDIATYPE_Video;
+        grab_mt.formattype = FORMAT_VideoInfo;
+        hr = ISampleGrabber_SetMediaType(state->samplegrabber, &grab_mt);
+        CHECK_COM_ERROR(hr, "setting sample grabber media type, hresult: 0x%lx\n", goto render_cleanup)
+        // no need to destroy grab_mt
+
+
+        hr = ICaptureGraphBuilder2_RenderStream(state->builder, &PIN_CATEGORY_PREVIEW, &MEDIATYPE_Video, (IUnknown*)state->camera, state->grabberbase, state->nullrenderer);
+        CHECK_COM_ERROR(hr, "rendering filter graph, hresult: 0x%lx\n", goto render_cleanup)
+
+render_cleanup:
+        if (FAILED(hr))
+        {
+            return err_capture(vdo, SEV_ERROR, ZBAR_ERR_INVALID, __func__,
+                               "rendering filter graph failed");
+        }
+    }
+    
+    // scope: after the graph is built (and the pins connected) we query the
+    // final media type from sample grabber's input pin;
+    {
+        int rc = 0;
+        IPin* inpin = NULL;
+        AM_MEDIA_TYPE input_mt = {};
+        
+        inpin = dshow_get_pin(state->grabberbase, PINDIR_INPUT);
+        assert(inpin);
+        
+        hr = IPin_ConnectionMediaType(inpin, &input_mt);
+        CHECK_COM_ERROR(hr, "couldn't query input media type from sample grabber (hresult=%lx)\n", goto cleanup1)
+        
+        
+        assert(dshow_has_vih(&input_mt));
+        const BITMAPINFOHEADER* bih = dshow_access_bih(&input_mt);
+
+        // adjust state->bih
+        state->bi_size = bih->biSize;
+        state->bih = realloc(state->bih, state->bi_size);
+        memcpy(state->bih, bih, state->bi_size);
+
+        
+        if (bih->biCompression == BI_RGB)
+        {
+            // check bitmap orientation:
+            // positive biHeight: bottom-up bitmap -> flip
+            // negative biHeight: top-down bitmap
+            // 
+            // note: this step is practically unnecessary because the sample 
+            // grabber doesn't support top-down video types anyway but I want 
+            // this to be independent
+            state->do_flip_bitmap = (bih->biHeight > 0);
+        }
+
+cleanup1:
+        DestroyMediaType(&input_mt);
+        COM_SAFE_RELEASE(&inpin);
+        
+        if (FAILED(hr))
+            return -1;
+        else if (rc)
+            return -1;
+    }
+
+    
+    // query camera stream parameters;
+    REFERENCE_TIME avgtime_perframe = 0;
+    
+    // scope: query avgtime_perframe from camera
+    {
+        AM_MEDIA_TYPE* currentmt = NULL;
+        hr = IAMStreamConfig_GetFormat(state->camstreamconfig, &currentmt);
+        CHECK_COM_ERROR(hr, "querying camera format failed, hresult: 0x%lx\n", goto cleanup2)
+
+        assert(dshow_has_vih(currentmt));
+        VIDEOINFOHEADER* vih = (VIDEOINFOHEADER*) currentmt->pbFormat;
+        avgtime_perframe = vih->AvgTimePerFrame;
+
+
+cleanup2:
+        DeleteMediaType(currentmt);
+    }
 
     // directshow keeps ownership of the image passed to the callback,
     // hence, keeping a pointer to the original data (iomode VIDEO_MMAP) is a bad idea
@@ -548,8 +840,10 @@ init:
     // keep zbar's default
     //vdo->num_images = ZBAR_VIDEO_IMAGES_MAX;
 
-    zprintf(3, "initialized video capture: %x format, %"PRId64" frames/s\n",
-            fmt, _100ns_unit / avgtime_perframe);
+    // note: vdo->format and vdo->datalen have been set accordingly in dshow_set_format()
+
+    zprintf(3, "initialized video capture: %.4s(%08x), %"PRId64" frames/s\n",
+            (char*)&fmt, fmt, _100ns_unit / avgtime_perframe);
 
 
     return 0;
@@ -573,19 +867,21 @@ static int dshow_cleanup (zbar_video_t* vdo)
     return 0;
 }
 
-static int dshow_probe(zbar_video_t* vdo)
+static int dshow_determine_formats(zbar_video_t* vdo)
 {
     video_state_t* state = vdo->state;
-    HRESULT hr;
 
 
     // collect formats
     int resolutions, caps_size;
-    hr = IAMStreamConfig_GetNumberOfCapabilities(state->streamconfig, &resolutions, &caps_size);
+    HRESULT hr = IAMStreamConfig_GetNumberOfCapabilities(state->camstreamconfig, &resolutions, &caps_size);
     CHECK_COM_ERROR(hr, "couldn't query camera capabilities (hresult=%lx)\n", return -1)
-    zprintf(6, "number of supported formats/resolutions as reported by directshow: %d\n", resolutions);
+    
+    zprintf(6, "number of formats/resolutions supported by the camera as reported by directshow: %d\n", resolutions);
+    zprintf(6, "list of those with a VIDEOINFOHEADER:\n");
 
     vdo->formats = calloc(resolutions+1, sizeof(uint32_t));
+    state->int_formats = calloc(resolutions+1, sizeof(uint32_t));
 
     // this is actually a VIDEO_STREAM_CONFIG_CAPS structure, which is mostly deprecated anyway,
     // so we just reserve enough buffer but treat it as opaque otherwise
@@ -594,104 +890,131 @@ static int dshow_probe(zbar_video_t* vdo)
     for (i = 0; i < resolutions; ++i)
     {
         AM_MEDIA_TYPE* mt;
-        HRESULT hr = IAMStreamConfig_GetStreamCaps(state->streamconfig, i, &mt, caps);
+        HRESULT hr = IAMStreamConfig_GetStreamCaps(state->camstreamconfig, i, &mt, caps);
         CHECK_COM_ERROR(hr, "querying stream capability failed, hresult: 0x%lx\n", continue)
 
-        if (IsEqualGUID(&mt->formattype, &FORMAT_VideoInfo) && 
-            mt->cbFormat >= sizeof(VIDEOINFOHEADER) && 
-            mt->pbFormat)
+        if (dshow_has_vih(mt))
         {
-            VIDEOINFOHEADER* vih = (VIDEOINFOHEADER*) mt->pbFormat;
-            zprintf(6, "supported format/resolution: " BIH_FMT "\n", BIH_FIELDS(&vih->bmiHeader));
-            if (dshow_is_fourcc_guid(&mt->subtype) &&  
-                // TODO: MJPG is compressed, but zbar can't handle this yet - 
-                // we would need to add the MJPEG Decompressor Filter to the capture graph
-                vih->bmiHeader.biCompression != fourcc('M','J','P','G'))
+            const BITMAPINFOHEADER* bih = dshow_access_bih(mt);
+            if (dshow_is_fourcc_guid(&mt->subtype))
             {
+                zprintf(6, "supported format/resolution: " BIH_FMT "\n", BIH_FIELDS(bih));
+                
                 // first search for existing fourcc format
                 int i;
                 for (i = 0; i < n; ++i)
                 {
-                    if (vdo->formats[i] == vih->bmiHeader.biCompression)
+                    if (state->int_formats[i] == bih->biCompression)
                         break;
                 }
                 // push back if not found
                 if (i == n)
-                    vdo->formats[n++] = vih->bmiHeader.biCompression;
+                {
+                    state->int_formats[n] = bih->biCompression;
+                    vdo->formats[n] = bih->biCompression;
+                    ++n;
+                }
             }
+            // note: other format types could be possible, e.g. rgb bitmap (BI_RGB) ...
         }
-        // note: other format types could be possible, e.g. VIDEOINFOHEADER2...
+        // note: other format types could be possible, e.g. VIDEOINFOHEADER2 ...
 
         DeleteMediaType(mt);
     }
     free(caps);
 
-    vdo->formats = realloc(vdo->formats, (n + 1) * sizeof(uint32_t));
     zprintf(6, "number of supported fourcc formats: %d\n", n);
+
+    vdo->formats = realloc(vdo->formats, (n + 1) * sizeof(uint32_t));
+    state->int_formats = realloc(state->int_formats,
+                                 (n + 1) * sizeof(uint32_t));
+    prepare_mjpg_format_mapping(vdo);
+    dump_formats(vdo);
 
     if (n == 0)
         return -1;
+        
+    return 0;
+}
+
+static int dshow_probe(zbar_video_t* vdo)
+{
+    if (dshow_determine_formats(vdo))
+        return -1;
 
 
-    // query current format,
-    // set requested size
-    BITMAPINFOHEADER* bih = NULL;
+    video_state_t* state = vdo->state;
+
+
+    // query current format
+
+    BITMAPINFOHEADER* state_bih = NULL;
 
     AM_MEDIA_TYPE* currentmt;
-    hr = IAMStreamConfig_GetFormat(state->streamconfig, &currentmt);
-    CHECK_COM_ERROR(hr, "couldn't query media type from samplegrabber (hresult=%lx)\n", return -1)
-
-    // query initial video format and size;
-    // set requested video size
-    if (IsEqualGUID(&currentmt->formattype, &FORMAT_VideoInfo) && 
-        currentmt->cbFormat >= sizeof(VIDEOINFOHEADER) && 
-        currentmt->pbFormat)
-    {
-        VIDEOINFOHEADER* vih = (VIDEOINFOHEADER*) currentmt->pbFormat;
-        zprintf(3, "initial format: " BIH_FMT " (bisz=%lx)\n",
-                BIH_FIELDS(&vih->bmiHeader), vih->bmiHeader.biSize);
-
-        if (dshow_is_fourcc_guid(&currentmt->subtype))
-        {
-            state->bi_size = vih->bmiHeader.biSize;
-            bih = state->bih = realloc(state->bih, state->bi_size);
-            memcpy(bih, &vih->bmiHeader, state->bi_size);
-
-            // set requested video size
-            if (vdo->width  &&  vdo->height)
-            {
-                zprintf(3, "set requested video size %dx%d\n", vdo->width, vdo->height);
-
-                vih->bmiHeader.biWidth = vdo->width;
-                vih->bmiHeader.biHeight = vdo->height;
-                hr = IAMStreamConfig_SetFormat(state->streamconfig, currentmt);
-                CHECK_COM_ERROR(hr, "couldn't set requested video size (hresult=%lx)\n", (void)0)
-                if (SUCCEEDED(hr))
-                    memcpy(bih, &vih->bmiHeader, state->bi_size);
-            }
-        }
-        else
-            zprintf(3, "unsupported initial format (no fourcc code)\n");
-    }
-    else
+    HRESULT hr = IAMStreamConfig_GetFormat(state->camstreamconfig, &currentmt);
+    CHECK_COM_ERROR(hr, "couldn't query current camera format (hresult=%lx)\n", return -1)
+    
+    // check for VIDEOINFOHEADER;
+    // note: other format types could be possible, e.g. VIDEOINFOHEADER2...
+    // which we don't support (the sample grabber doesn't as well)
+    if (!dshow_has_vih(currentmt))
     {
         LPOLESTR str = NULL;
         hr = StringFromCLSID(&currentmt->formattype, &str);
         CHECK_COM_ERROR(hr, "StringFromCLSID() failed (hresult=%lx)\n", (void)0)
-        zwprintf(1, L"encountered unsupported video format type: %s\n", str);
+        err_capture(vdo, SEV_ERROR, ZBAR_ERR_INVALID, __func__,
+                    "unsupported initial format (no VIDEOINFOHEADER)");
+        zwprintf(1, L"encountered unsupported initial format, no VIDEOINFOHEADER video format type: %s\n", 
+                 str);
         CoTaskMemFree(str);
+        goto freemt;
+    }
+    // check whether we're dealing with a fourcc media type;
+    // In case it's not it might be possible that it's a rgb bitmap (BI_RGB), 
+    // which we could map to fourcc formats, but as far as I know current 
+    // cameras don't provide uncompressed bitmap streams.
+    if (!dshow_is_fourcc_guid(&currentmt->subtype))
+    {
+        LPOLESTR str = NULL;
+        hr = StringFromCLSID(&currentmt->subtype, &str);
+        CHECK_COM_ERROR(hr, "StringFromCLSID() failed (hresult=%lx)\n", (void)0)
+        err_capture(vdo, SEV_ERROR, ZBAR_ERR_INVALID, __func__,
+                    "unsupported initial format");
+        zwprintf(1, L"encountered unsupported initial format: %s\n", str);
+        CoTaskMemFree(str);
+        goto freemt;
     }
 
+    // scope: store bitmapinfoheader (initial format and size)
+    {
+        const BITMAPINFOHEADER* current_bih = dshow_access_bih(currentmt);
+
+        zprintf(3, "initial format: %.4s(%08lx) " BIH_FMT "\n",
+               (char*)&current_bih->biCompression, current_bih->biCompression, 
+                BIH_FIELDS(current_bih));
+
+        state->bi_size = current_bih->biSize;
+        state_bih = state->bih = realloc(state->bih, state->bi_size);
+        memcpy(state_bih, current_bih, state->bi_size);
+    }
+
+freemt:
     DeleteMediaType(currentmt);
 
-    if (!bih)
+    
+    // bail out if we couldn't get a meaningful bitmapinfoheader
+    if (!state_bih)
         return -1;
 
 
-    // no matter the size requested, we always set what the source filter defaults to
-    vdo->width = bih->biWidth;
-    vdo->height = bih->biHeight;
-    vdo->datalen = bih->biSizeImage;
+    if (!vdo->width  ||  !vdo->height)
+    {
+        // video size not requested, take camera default
+
+        vdo->width = state_bih->biWidth;
+        vdo->height = state_bih->biHeight;
+    }
+    vdo->datalen = state_bih->biSizeImage;
     vdo->intf = VIDEO_DSHOW;
     vdo->init = dshow_init;
     vdo->start = dshow_start;
@@ -719,7 +1042,7 @@ static IBaseFilter* dshow_search_camera(const char* dev)
             dev[0] >= '0' && dev[0] <= '9')
         reqid = dev[0] - '0';
 
-    zprintf(6, "searching for camera #%d: %s\n", reqid, dev);
+    zprintf(6, "searching for camera (#%d): %s\n", reqid, dev);
 
     HRESULT hr = CoCreateInstance(&CLSID_SystemDeviceEnum, NULL, CLSCTX_INPROC_SERVER, &IID_ICreateDevEnum, (void**)&devenumerator);
     CHECK_COM_ERROR(hr, "failed to create system device enumerator (hresult=0x%lx)\n", goto done)
@@ -882,8 +1205,8 @@ int _zbar_video_open (zbar_video_t* vdo, const char* dev)
     // should work according to the documentation but it doesn't.
     // Because devices may have separate pins for capture and preview or have a video port pin (PIN_CATEGORY_VIDEOPORT)
     // instead of a preview pin, I do hope that we get the streamconfig interface for the correct pin
-    hr = ICaptureGraphBuilder2_FindInterface(state->builder, &LOOK_DOWNSTREAM_ONLY, NULL, state->camera, &IID_IAMStreamConfig, (void**)&state->streamconfig);
-    CHECK_COM_ERROR(hr, "querying streamconfig interface, hresult: 0x%lx\n", goto done)
+    hr = ICaptureGraphBuilder2_FindInterface(state->builder, &LOOK_DOWNSTREAM_ONLY, NULL, state->camera, &IID_IAMStreamConfig, (void**)&state->camstreamconfig);
+    CHECK_COM_ERROR(hr, "querying camera's streamconfig interface, hresult: 0x%lx\n", goto done)
 
 
     if (dshow_probe(vdo))
@@ -909,3 +1232,5 @@ done:
 
     return ret;
 }
+
+// jedit file properties :noTabs=true:tabSize=4:indentSize=4:
