@@ -85,6 +85,10 @@ ZBAR_DEFINE_STATIC_GUID(MEDIASUBTYPE_FOURCC_PLACEHOLDER,
         (bih)->biXPelsPerMeter, (bih)->biYPelsPerMeter,                 \
         (bih)->biClrImportant, (bih)->biClrUsed, (bih)->biSize
 
+// taken from Capturing an Image winapi sample
+#define BMP_SIZE(cx, cy, bitsPerPix) \
+        ((((cx) * (bitsPerPix) + 31) / 32) * 4 * (cy))
+
 #define COM_SAFE_RELEASE(ppIface) \
     if (*ppIface)\
         (*ppIface)->lpVtbl->Release(*ppIface)
@@ -124,6 +128,7 @@ static void DeleteMediaType(AM_MEDIA_TYPE* mt)
     CoTaskMemFree(mt);
 }
 
+/// Returns the first pin for the given direction.
 static IPin* dshow_get_pin(IBaseFilter* filter, 
                            PIN_DIRECTION requested_direction)
 {
@@ -162,9 +167,8 @@ static int dshow_is_fourcc_guid(REFGUID subtype)
     return IsEqualGUID(subtype, &clsid);
 }
 
-/** Check whether the given AM_MEDIA_TYPE contains a 
-    VIDEOINFOHEADER block.
- */
+/// Checks whether the given AM_MEDIA_TYPE contains a 
+/// VIDEOINFOHEADER block.
 static inline int dshow_has_vih(AM_MEDIA_TYPE* mt)
 {
     // documentation for AM_MEDIA_TYPE emphasizes to do a thorough check 
@@ -247,8 +251,9 @@ static void dshow_destroy_video_state_t(video_state_t* state)
     free(state->int_formats);
 }
 
-/// Returns the index in <code>vdo->formats</code> of the given format.
-/** If not found, returns -1 */
+/// Returns the index of the given format in formats array.
+/** If not found, returns -1. The array is constructed like
+  * <code>vdo->formats</code>, with the terminating null. */
 int get_format_index(uint32_t* fmts, uint32_t fmt0)
 {
     uint32_t *fmt;
@@ -264,6 +269,8 @@ int get_format_index(uint32_t* fmts, uint32_t fmt0)
         return -1;
 }
 
+/// Dumps the mapping of internal and external formats, if the debug level
+/// is sufficient.
 static void dump_formats(zbar_video_t* vdo)
 {
     video_state_t* state = vdo->state;
@@ -318,7 +325,7 @@ static void prepare_mjpg_format_mapping(zbar_video_t* vdo)
 }
 
 
-// sample grabber implementation (derived from ISampleGrabberCB)
+/// sample grabber callback implementation (derived from ISampleGrabberCB)
 typedef struct zbar_samplegrabber_cb
 {
     // baseclass
@@ -561,7 +568,7 @@ static int dshow_stop(zbar_video_t* vdo)
 static int dshow_set_format (zbar_video_t* vdo,
                            uint32_t fmt)
 {
-    int rc = 0;
+    int rc = 0; // return code
 
     const zbar_format_def_t* fmtdef = _zbar_format_lookup(fmt);
     int fmt_ind = get_format_index(vdo->formats, fmt);
@@ -577,7 +584,7 @@ static int dshow_set_format (zbar_video_t* vdo,
     
     AM_MEDIA_TYPE* currentmt = NULL;
     HRESULT hr = IAMStreamConfig_GetFormat(state->camstreamconfig, &currentmt);
-    CHECK_COM_ERROR(hr, "queried currentmt, hresult: 0x%lx\n", return -1);
+    CHECK_COM_ERROR(hr, "queried currentmt, hresult: 0x%lx\n", goto cleanup);
     
     assert(dshow_has_vih(currentmt));
     BITMAPINFOHEADER* bih = dshow_access_bih(currentmt);
@@ -616,13 +623,13 @@ static int dshow_set_format (zbar_video_t* vdo,
     CHECK_COM_ERROR(hr, "setting camera format failed, hresult: 0x%lx\n", goto cleanup)
 
     DeleteMediaType(currentmt);
-    
+    currentmt = NULL;
+
     
     // re-read format, image data size might have changed
     
-    currentmt = NULL;
     hr = IAMStreamConfig_GetFormat(state->camstreamconfig, &currentmt);
-    CHECK_COM_ERROR(hr, "queried currentmt, hresult: 0x%lx\n", return -1);
+    CHECK_COM_ERROR(hr, "queried currentmt, hresult: 0x%lx\n", goto cleanup);
     
     bih = dshow_access_bih(currentmt);
 
@@ -644,7 +651,8 @@ static int dshow_set_format (zbar_video_t* vdo,
     if (vdo->formats[fmt_ind] != state->int_formats[fmt_ind]) {
         // See prepare_mjpg_format_mapping for possible differences
         // between internal and zbar format.
-        vdo->datalen = vdo->width * vdo->height * 4; //BGR4
+        vdo->datalen = BMP_SIZE(vdo->width, vdo->height,
+                                mjpg_conversion_fmt_bpp);
     }
 
     zprintf(4, "set camera format: %.4s(%08x) " BIH_FMT "\n",
@@ -657,7 +665,7 @@ cleanup:
         return err_capture(vdo, SEV_ERROR, ZBAR_ERR_INVALID, __func__,
                            "setting dshow format failed");
     else
-        // note: if an error happened it was already captured
+        // note: if an error happened it was already captured and reported
         return rc;
 }
 
@@ -761,7 +769,6 @@ render_cleanup:
     // scope: after the graph is built (and the pins connected) we query the
     // final media type from sample grabber's input pin;
     {
-        int rc = 0;
         IPin* inpin = NULL;
         AM_MEDIA_TYPE input_mt = {};
         
@@ -798,8 +805,6 @@ cleanup1:
         COM_SAFE_RELEASE(&inpin);
         
         if (FAILED(hr))
-            return -1;
-        else if (rc)
             return -1;
     }
 
