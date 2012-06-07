@@ -24,7 +24,7 @@
 #include "video.h"
 #include "thread.h"
 #include <objbase.h>
-#include "strmif.h"
+#include <strmif.h>
 #include <control.h>
 #include <qedit.h>
 #include <amvideo.h>    // include after ddraw.h has been included from any dshow header
