@@ -96,8 +96,15 @@ ZBAR_DEFINE_STATIC_GUID(MEDIASUBTYPE_FOURCC_PLACEHOLDER,
 #define CHECK_COM_ERROR(hr, msg, stmt)\
     if (FAILED(hr))\
     {\
-        zprintf(6, msg, hr);\
-        stmt;\
+        LPSTR sysmsg; \
+        FormatMessage(FORMAT_MESSAGE_ALLOCATE_BUFFER \
+                      | FORMAT_MESSAGE_FROM_SYSTEM, \
+                      NULL, hr, \
+                      0 /* MAKELANGID(LANG_ENGLISH, SUBLANG_ENGLISH_US) */, \
+                      (LPTSTR)&sysmsg, 0, NULL); \
+        zprintf(6, "%s, hresult: 0x%lx %s", msg, hr, sysmsg); \
+        LocalFree(sysmsg); \
+        stmt; \
     }
 
 
@@ -538,7 +545,7 @@ static int dshow_start(zbar_video_t* vdo)
     zprintf(16, "thr=%04lx\n", _zbar_thread_self());
 
     HRESULT hr = IMediaControl_Run(state->mediacontrol);
-    CHECK_COM_ERROR(hr, "couldn't start video stream, hresult: 0x%lx\n", (void)0);
+    CHECK_COM_ERROR(hr, "couldn't start video stream", (void)0);
     if (FAILED(hr))
         return(err_capture(vdo, SEV_ERROR, ZBAR_ERR_INVALID, __func__,
                            "starting video stream"));
@@ -552,7 +559,7 @@ static int dshow_stop(zbar_video_t* vdo)
     zprintf(16, "thr=%04lx\n", _zbar_thread_self());
 
     HRESULT hr = IMediaControl_Stop(state->mediacontrol);
-    CHECK_COM_ERROR(hr, "couldn't stop video stream, hresult: 0x%lx\n", (void)0);
+    CHECK_COM_ERROR(hr, "couldn't stop video stream", (void)0);
     if (FAILED(hr))
         return(err_capture(vdo, SEV_ERROR, ZBAR_ERR_INVALID, __func__,
                            "stopping video stream"));
@@ -584,7 +591,7 @@ static int dshow_set_format (zbar_video_t* vdo,
     
     AM_MEDIA_TYPE* currentmt = NULL;
     HRESULT hr = IAMStreamConfig_GetFormat(state->camstreamconfig, &currentmt);
-    CHECK_COM_ERROR(hr, "queried currentmt, hresult: 0x%lx\n", goto cleanup);
+    CHECK_COM_ERROR(hr, "queried currentmt", goto cleanup);
     
     assert(dshow_has_vih(currentmt));
     BITMAPINFOHEADER* bih = dshow_access_bih(currentmt);
@@ -620,7 +627,7 @@ static int dshow_set_format (zbar_video_t* vdo,
             (char*)&int_fmt, int_fmt, BIH_FIELDS(bih));
 
     hr = IAMStreamConfig_SetFormat(state->camstreamconfig, currentmt);
-    CHECK_COM_ERROR(hr, "setting camera format failed, hresult: 0x%lx\n", goto cleanup)
+    CHECK_COM_ERROR(hr, "setting camera format failed", goto cleanup)
 
     DeleteMediaType(currentmt);
     currentmt = NULL;
@@ -629,7 +636,7 @@ static int dshow_set_format (zbar_video_t* vdo,
     // re-read format, image data size might have changed
     
     hr = IAMStreamConfig_GetFormat(state->camstreamconfig, &currentmt);
-    CHECK_COM_ERROR(hr, "queried currentmt, hresult: 0x%lx\n", goto cleanup);
+    CHECK_COM_ERROR(hr, "queried currentmt", goto cleanup);
     
     bih = dshow_access_bih(currentmt);
 
@@ -708,7 +715,7 @@ static int dshow_init(zbar_video_t* vdo, uint32_t fmt)
 
         // add mjpeg decompressor to graph
         hr = IGraphBuilder_AddFilter(state->graph, mjpgdecompressor, L"MJPEG decompressor");
-        CHECK_COM_ERROR(hr, "adding MJPEG decompressor, hresult: 0x%lx\n", goto mjpg_cleanup)
+        CHECK_COM_ERROR(hr, "adding MJPEG decompressor", goto mjpg_cleanup)
 
         // explicitly convert MJPG to RGB32
         // (sample grabber will only accept this format)
@@ -724,15 +731,15 @@ static int dshow_init(zbar_video_t* vdo, uint32_t fmt)
         conv_mt.subtype = *mjpg_conversion_mediatype;
         conv_mt.formattype = FORMAT_VideoInfo;
         hr = ISampleGrabber_SetMediaType(state->samplegrabber, &conv_mt);
-        CHECK_COM_ERROR(hr, "setting mjpg conversion media type, hresult: 0x%lx\n", goto mjpg_cleanup)
+        CHECK_COM_ERROR(hr, "setting mjpg conversion media type", goto mjpg_cleanup)
         // no need to destroy conv_mt
 
 
         hr = ICaptureGraphBuilder2_RenderStream(state->builder, &PIN_CATEGORY_PREVIEW, &MEDIATYPE_Video, (IUnknown*)state->camera, NULL, mjpgdecompressor);
-        CHECK_COM_ERROR(hr, "rendering filter graph 1, hresult: 0x%lx\n", goto mjpg_cleanup)
+        CHECK_COM_ERROR(hr, "rendering filter graph 1", goto mjpg_cleanup)
 
         hr = ICaptureGraphBuilder2_RenderStream(state->builder, NULL, &MEDIATYPE_Video, (IUnknown*)mjpgdecompressor, state->grabberbase, state->nullrenderer);
-        CHECK_COM_ERROR(hr, "rendering filter graph 2, hresult: 0x%lx\n", goto mjpg_cleanup)
+        CHECK_COM_ERROR(hr, "rendering filter graph 2", goto mjpg_cleanup)
 
 mjpg_cleanup:
         IBaseFilter_Release(mjpgdecompressor);
@@ -751,12 +758,12 @@ mjpg_cleanup:
         grab_mt.majortype = MEDIATYPE_Video;
         grab_mt.formattype = FORMAT_VideoInfo;
         hr = ISampleGrabber_SetMediaType(state->samplegrabber, &grab_mt);
-        CHECK_COM_ERROR(hr, "setting sample grabber media type, hresult: 0x%lx\n", goto render_cleanup)
+        CHECK_COM_ERROR(hr, "setting sample grabber media type", goto render_cleanup)
         // no need to destroy grab_mt
 
 
         hr = ICaptureGraphBuilder2_RenderStream(state->builder, &PIN_CATEGORY_PREVIEW, &MEDIATYPE_Video, (IUnknown*)state->camera, state->grabberbase, state->nullrenderer);
-        CHECK_COM_ERROR(hr, "rendering filter graph, hresult: 0x%lx\n", goto render_cleanup)
+        CHECK_COM_ERROR(hr, "rendering filter graph", goto render_cleanup)
 
 render_cleanup:
         if (FAILED(hr))
@@ -816,7 +823,7 @@ cleanup1:
     {
         AM_MEDIA_TYPE* currentmt = NULL;
         hr = IAMStreamConfig_GetFormat(state->camstreamconfig, &currentmt);
-        CHECK_COM_ERROR(hr, "querying camera format failed, hresult: 0x%lx\n", goto cleanup2)
+        CHECK_COM_ERROR(hr, "querying camera format failed", goto cleanup2)
 
         assert(dshow_has_vih(currentmt));
         VIDEOINFOHEADER* vih = (VIDEOINFOHEADER*) currentmt->pbFormat;
@@ -896,7 +903,7 @@ static int dshow_determine_formats(zbar_video_t* vdo)
     {
         AM_MEDIA_TYPE* mt;
         HRESULT hr = IAMStreamConfig_GetStreamCaps(state->camstreamconfig, i, &mt, caps);
-        CHECK_COM_ERROR(hr, "querying stream capability failed, hresult: 0x%lx\n", continue)
+        CHECK_COM_ERROR(hr, "querying stream capability failed", continue)
 
         if (dshow_has_vih(mt))
         {
@@ -1087,12 +1094,12 @@ static IBaseFilter* dshow_search_camera(const char* dev)
         VariantInit(&friendlyname_variant);
 
         hr = IMoniker_BindToStorage(moniker, NULL, NULL, &IID_IPropertyBag, (void**)&propbag);
-        CHECK_COM_ERROR(hr, "failed to get property bag from moniker, hresult: 0x%lx\n", goto breakout)
+        CHECK_COM_ERROR(hr, "failed to get property bag from moniker", goto breakout)
 
         hr = IPropertyBag_Read(propbag, L"DevicePath", &devpath_variant, NULL);
-        CHECK_COM_ERROR(hr, "failed to read DevicePath from camera device, hresult: 0x%lx\n", goto breakout)
+        CHECK_COM_ERROR(hr, "failed to read DevicePath from camera device", goto breakout)
         hr = IPropertyBag_Read(propbag, L"FriendlyName", &friendlyname_variant, NULL);
-        CHECK_COM_ERROR(hr, "failed to read FriendlyName from camera device, hresult: 0x%lx\n", goto breakout)
+        CHECK_COM_ERROR(hr, "failed to read FriendlyName from camera device", goto breakout)
 
         if ((reqid >= 0)
            ? devid == reqid
@@ -1100,7 +1107,7 @@ static IBaseFilter* dshow_search_camera(const char* dev)
         {
             // create camera from moniker
             hr = IMoniker_BindToObject(moniker, NULL, NULL, &IID_IBaseFilter, (void**)&camera);
-            CHECK_COM_ERROR(hr, "failed to get camera device, hresult: 0x%lx\n", goto breakout)
+            CHECK_COM_ERROR(hr, "failed to get camera device", goto breakout)
         }
 
         if (camera)
@@ -1164,45 +1171,45 @@ int _zbar_video_open (zbar_video_t* vdo, const char* dev)
 
     // create filter graph instance
     hr = CoCreateInstance(&CLSID_FilterGraph, NULL, CLSCTX_INPROC_SERVER, &IID_IGraphBuilder, (void**)&state->graph);
-    CHECK_COM_ERROR(hr, "graph builder creation, hresult: 0x%lx\n", goto done)
+    CHECK_COM_ERROR(hr, "graph builder creation", goto done)
     
     // query media control from filter graph
     hr = IGraphBuilder_QueryInterface(state->graph, &IID_IMediaControl, (void**)&state->mediacontrol);
-    CHECK_COM_ERROR(hr, "querying media control, hresult: 0x%lx\n", goto done)
+    CHECK_COM_ERROR(hr, "querying media control", goto done)
 
     // create sample grabber instance
     hr = CoCreateInstance(&CLSID_SampleGrabber, NULL, CLSCTX_INPROC_SERVER, &IID_ISampleGrabber, (void**)&state->samplegrabber);
-    CHECK_COM_ERROR(hr, "samplegrabber creation, hresult: 0x%lx\n", goto done)
+    CHECK_COM_ERROR(hr, "samplegrabber creation", goto done)
 
     // query base filter interface from sample grabber
     hr = ISampleGrabber_QueryInterface(state->samplegrabber, &IID_IBaseFilter, (void**)&state->grabberbase);
-    CHECK_COM_ERROR(hr, "grabberbase query, hresult: 0x%lx\n", goto done)
+    CHECK_COM_ERROR(hr, "grabberbase query", goto done)
 
     // capture graph without preview window
     hr = CoCreateInstance(&CLSID_NullRenderer, NULL, CLSCTX_INPROC_SERVER, &IID_IBaseFilter, (void**)&state->nullrenderer);
-    CHECK_COM_ERROR(hr, "null renderer creation, hresult: 0x%lx\n", goto done)
+    CHECK_COM_ERROR(hr, "null renderer creation", goto done)
 
 
     // add camera to graph
     hr = IGraphBuilder_AddFilter(state->graph, state->camera, L"Camera");
-    CHECK_COM_ERROR(hr, "adding camera, hresult: 0x%lx\n", goto done)
+    CHECK_COM_ERROR(hr, "adding camera", goto done)
 
     // add sample grabber to graph
     hr = IGraphBuilder_AddFilter(state->graph, state->grabberbase, L"Sample Grabber");
-    CHECK_COM_ERROR(hr, "adding samplegrabber, hresult: 0x%lx\n", goto done)
+    CHECK_COM_ERROR(hr, "adding samplegrabber", goto done)
 
     // add nullrenderer to graph
     hr = IGraphBuilder_AddFilter(state->graph, state->nullrenderer, L"Null Renderer");
-    CHECK_COM_ERROR(hr, "adding null renderer, hresult: 0x%lx\n", goto done)
+    CHECK_COM_ERROR(hr, "adding null renderer", goto done)
 
 
     // Create the Capture Graph Builder.
     hr = CoCreateInstance(&CLSID_CaptureGraphBuilder2, NULL, CLSCTX_INPROC_SERVER, &IID_ICaptureGraphBuilder2, (void**)&state->builder);
-    CHECK_COM_ERROR(hr, "capturegraph builder creation, hresult: 0x%lx\n", goto done)
+    CHECK_COM_ERROR(hr, "capturegraph builder creation", goto done)
  
     // tell graph builder about the filter graph
     hr = ICaptureGraphBuilder2_SetFiltergraph(state->builder, state->graph);
-    CHECK_COM_ERROR(hr, "setting filtergraph, hresult: 0x%lx\n", goto done)
+    CHECK_COM_ERROR(hr, "setting filtergraph", goto done)
     
 
     // TODO: 
@@ -1211,7 +1218,7 @@ int _zbar_video_open (zbar_video_t* vdo, const char* dev)
     // Because devices may have separate pins for capture and preview or have a video port pin (PIN_CATEGORY_VIDEOPORT)
     // instead of a preview pin, I do hope that we get the streamconfig interface for the correct pin
     hr = ICaptureGraphBuilder2_FindInterface(state->builder, &LOOK_DOWNSTREAM_ONLY, NULL, state->camera, &IID_IAMStreamConfig, (void**)&state->camstreamconfig);
-    CHECK_COM_ERROR(hr, "querying camera's streamconfig interface, hresult: 0x%lx\n", goto done)
+    CHECK_COM_ERROR(hr, "querying camera's streamconfig interface", goto done)
 
 
     if (dshow_probe(vdo))
