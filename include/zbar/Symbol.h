@@ -101,7 +101,7 @@ public:
     SymbolIterator symbol_begin() const;
 
     /// return a SymbolIterator suitable for ending iteration.
-    const SymbolIterator symbol_end() const;
+    SymbolIterator symbol_end() const;
 
 private:
     const zbar_symbol_set_t *_syms;
@@ -202,7 +202,7 @@ public:
         }
 
         /// retrieve currently referenced Point.
-        const Point operator* () const
+        Point operator* () const
         {
             assert(!!*this);
             if(!*this)
@@ -315,20 +315,20 @@ public:
     }
 
     /// retrieve the string name of the symbol type.
-    const std::string get_type_name () const
+    std::string get_type_name () const
     {
         return(zbar_get_symbol_name(_type));
     }
 
     /// retrieve the string name for any addon.
     /// @deprecated in 0.11
-    const std::string get_addon_name () const
+    std::string get_addon_name () const
     {
         return(zbar_get_addon_name(_type));
     }
 
     /// retrieve data decoded from symbol.
-    const std::string get_data () const
+    const std::string& get_data () const
     {
         return(_data);
     }
@@ -399,7 +399,7 @@ public:
     }
 
     /// see zbar_symbol_xml().
-    const std::string xml () const
+    std::string xml () const
     {
         if(!_sym)
             return("");
@@ -485,7 +485,7 @@ public:
     }
 
     /// retrieve currently referenced Symbol.
-    const Symbol operator* () const
+    const Symbol& operator* () const
     {
         return(_sym);
     }
@@ -523,14 +523,14 @@ inline SymbolIterator SymbolSet::symbol_begin () const {
     return(SymbolIterator(*this));
 }
 
-inline const SymbolIterator SymbolSet::symbol_end () const {
+inline SymbolIterator SymbolSet::symbol_end () const {
     return(SymbolIterator());
 }
 
 /// @relates Symbol
 /// stream the string representation of a Symbol.
-static inline std::ostream& operator<< (std::ostream& out,
-                                        const Symbol& sym)
+inline std::ostream& operator<< (std::ostream& out,
+                                 const Symbol& sym)
 {
     out << sym.get_type_name() << ":" << sym.get_data();
     return(out);

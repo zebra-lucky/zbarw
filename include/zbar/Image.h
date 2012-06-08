@@ -278,7 +278,7 @@ public:
         throw FormatError();
     }
 
-    const SymbolSet get_symbols () const {
+    SymbolSet get_symbols () const {
         return(SymbolSet(zbar_image_get_symbols(_img)));
     }
 

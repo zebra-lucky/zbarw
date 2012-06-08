@@ -79,7 +79,7 @@ public:
     /// set config parsed from configuration string.
     /// @see zbar_image_scanner_parse_config()
     /// @since 0.4
-    int set_config (std::string cfgstr)
+    int set_config (const std::string& cfgstr)
     {
         return(zbar_image_scanner_parse_config(_scanner, cfgstr.c_str()));
     }
@@ -102,7 +102,7 @@ public:
     /// retrieve decode results for last scanned image.
     /// @see zbar_image_scanner_get_results()
     /// @since 0.10
-    const SymbolSet get_results () const {
+    SymbolSet get_results () const {
         return(SymbolSet(zbar_image_scanner_get_results(_scanner)));
     }
 

@@ -125,7 +125,7 @@ private:
 
 /// select a compatible format between video input and output window.
 /// see zbar_negotiate_format()
-static inline void negotiate_format (Video& video, Window& window)
+inline void negotiate_format (Video& video, Window& window)
 {
     if(zbar_negotiate_format(video, window) < 0)
         throw_exception(video);

@@ -130,7 +130,7 @@ class Decoder {
 
     /// retrieve last decoded data as a std::string.
     /// see zbar_decoder_get_data()
-    const std::string get_data_string() const
+    std::string get_data_string() const
     {
         return(std::string(zbar_decoder_get_data(_decoder),
                            zbar_decoder_get_data_length(_decoder)));
@@ -138,7 +138,7 @@ class Decoder {
 
     /// retrieve last decoded data as a std::string.
     /// see zbar_decoder_get_data()
-    const std::string get_data() const
+    std::string get_data() const
     {
         return(get_data_string());
     }
@@ -179,7 +179,7 @@ class Decoder {
     /// set config parsed from configuration string.
     /// @see zbar_decoder_parse_config()
     /// @since 0.4
-    int set_config (std::string cfgstr)
+    int set_config (const std::string& cfgstr)
     {
         return(zbar_decoder_parse_config(_decoder, cfgstr.c_str()));
     }

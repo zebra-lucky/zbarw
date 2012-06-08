@@ -67,7 +67,7 @@ public:
     }
 
     /// open and probe a video device.
-    void open (std::string& device)
+    void open (const std::string& device)
     {
         if(zbar_video_open(_video, device.c_str()))
             throw_exception(_video);
@@ -90,7 +90,7 @@ public:
 
     /// initialize video using a specific format for debug.
     /// see zbar_video_init()
-    void init (std::string& format)
+    void init (const std::string& format)
     {
         unsigned int fourcc = zbar_fourcc_parse(format.c_str());
         if(zbar_video_init(_video, fourcc))

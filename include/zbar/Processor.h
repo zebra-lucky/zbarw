@@ -96,7 +96,7 @@ class Processor {
     /// set config parsed from configuration string.
     /// @see zbar_processor_parse_config()
     /// @since 0.4
-    int set_config (std::string cfgstr)
+    int set_config (const std::string& cfgstr)
     {
         return(zbar_processor_parse_config(_processor, cfgstr.c_str()));
     }
@@ -130,7 +130,7 @@ class Processor {
     /// retrieve decode results for last scanned image.
     /// @see zbar_processor_get_results()
     /// @since 0.10
-    const SymbolSet get_results () const {
+    SymbolSet get_results () const {
         return(SymbolSet(zbar_processor_get_results(_processor)));
     }
 
@@ -180,8 +180,8 @@ class Processor {
 
     /// force specific input and output formats for debug/testing.
     /// see zbar_processor_force_format()
-    void force_format (std::string& input_format,
-                       std::string& output_format)
+    void force_format (const std::string& input_format,
+                       const std::string& output_format)
     {
         unsigned long ifourcc = zbar_fourcc_parse(input_format.c_str());
         unsigned long ofourcc = zbar_fourcc_parse(output_format.c_str());
