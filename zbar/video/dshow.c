@@ -96,12 +96,13 @@ ZBAR_DEFINE_STATIC_GUID(MEDIASUBTYPE_FOURCC_PLACEHOLDER,
 #define CHECK_COM_ERROR(hr, msg, stmt)\
     if (FAILED(hr))\
     {\
-        LPSTR sysmsg; \
+        LPSTR sysmsg = NULL; \
         FormatMessage(FORMAT_MESSAGE_ALLOCATE_BUFFER \
-                      | FORMAT_MESSAGE_FROM_SYSTEM, \
+                      | FORMAT_MESSAGE_FROM_SYSTEM \
+                      | FORMAT_MESSAGE_IGNORE_INSERTS, \
                       NULL, hr, \
                       0 /* MAKELANGID(LANG_ENGLISH, SUBLANG_ENGLISH_US) */, \
-                      (LPTSTR)&sysmsg, 0, NULL); \
+                      (LPSTR)&sysmsg, 0, NULL); \
         zprintf(6, "%s, hresult: 0x%lx %s", msg, hr, sysmsg); \
         LocalFree(sysmsg); \
         stmt; \
@@ -706,7 +707,7 @@ static int dshow_init(zbar_video_t* vdo, uint32_t fmt)
     {
         IBaseFilter* mjpgdecompressor = NULL;
         hr = CoCreateInstance(&CLSID_MjpegDec, NULL, CLSCTX_INPROC_SERVER, &IID_IBaseFilter, (void**)&mjpgdecompressor);
-        CHECK_COM_ERROR(hr, "failed to create mjpeg decompressor filter (hresult=0x%lx)\n", (void)0)
+        CHECK_COM_ERROR(hr, "failed to create mjpeg decompressor filter", (void)0)
         if (FAILED(hr))
         {
             return err_capture(vdo, SEV_ERROR, ZBAR_ERR_INVALID, __func__,
@@ -783,7 +784,7 @@ render_cleanup:
         assert(inpin);
         
         hr = IPin_ConnectionMediaType(inpin, &input_mt);
-        CHECK_COM_ERROR(hr, "couldn't query input media type from sample grabber (hresult=%lx)\n", goto cleanup1)
+        CHECK_COM_ERROR(hr, "couldn't query input media type from sample grabber", goto cleanup1)
         
         
         assert(dshow_has_vih(&input_mt));
@@ -887,7 +888,7 @@ static int dshow_determine_formats(zbar_video_t* vdo)
     // collect formats
     int resolutions, caps_size;
     HRESULT hr = IAMStreamConfig_GetNumberOfCapabilities(state->camstreamconfig, &resolutions, &caps_size);
-    CHECK_COM_ERROR(hr, "couldn't query camera capabilities (hresult=%lx)\n", return -1)
+    CHECK_COM_ERROR(hr, "couldn't query camera capabilities", return -1)
     
     zprintf(6, "number of formats/resolutions supported by the camera as reported by directshow: %d\n", resolutions);
     zprintf(6, "list of those with a VIDEOINFOHEADER:\n");
@@ -964,7 +965,7 @@ static int dshow_probe(zbar_video_t* vdo)
 
     AM_MEDIA_TYPE* currentmt;
     HRESULT hr = IAMStreamConfig_GetFormat(state->camstreamconfig, &currentmt);
-    CHECK_COM_ERROR(hr, "couldn't query current camera format (hresult=%lx)\n", return -1)
+    CHECK_COM_ERROR(hr, "couldn't query current camera format", return -1)
     
     // check for VIDEOINFOHEADER;
     // note: other format types could be possible, e.g. VIDEOINFOHEADER2...
@@ -973,7 +974,7 @@ static int dshow_probe(zbar_video_t* vdo)
     {
         LPOLESTR str = NULL;
         hr = StringFromCLSID(&currentmt->formattype, &str);
-        CHECK_COM_ERROR(hr, "StringFromCLSID() failed (hresult=%lx)\n", (void)0)
+        CHECK_COM_ERROR(hr, "StringFromCLSID() failed", (void)0)
         err_capture(vdo, SEV_ERROR, ZBAR_ERR_INVALID, __func__,
                     "unsupported initial format (no VIDEOINFOHEADER)");
         zwprintf(1, L"encountered unsupported initial format, no VIDEOINFOHEADER video format type: %s\n", 
@@ -989,7 +990,7 @@ static int dshow_probe(zbar_video_t* vdo)
     {
         LPOLESTR str = NULL;
         hr = StringFromCLSID(&currentmt->subtype, &str);
-        CHECK_COM_ERROR(hr, "StringFromCLSID() failed (hresult=%lx)\n", (void)0)
+        CHECK_COM_ERROR(hr, "StringFromCLSID() failed", (void)0)
         err_capture(vdo, SEV_ERROR, ZBAR_ERR_INVALID, __func__,
                     "unsupported initial format");
         zwprintf(1, L"encountered unsupported initial format: %s\n", str);
@@ -1057,10 +1058,10 @@ static IBaseFilter* dshow_search_camera(const char* dev)
     zprintf(6, "searching for camera (#%d): %s\n", reqid, dev);
 
     HRESULT hr = CoCreateInstance(&CLSID_SystemDeviceEnum, NULL, CLSCTX_INPROC_SERVER, &IID_ICreateDevEnum, (void**)&devenumerator);
-    CHECK_COM_ERROR(hr, "failed to create system device enumerator (hresult=0x%lx)\n", goto done)
+    CHECK_COM_ERROR(hr, "failed to create system device enumerator", goto done)
 
     hr = ICreateDevEnum_CreateClassEnumerator(devenumerator, &CLSID_VideoInputDeviceCategory, &enummoniker, 0);
-    CHECK_COM_ERROR(hr, "failed to create enumerator moniker (hresult=0x%lx)\n", goto done)
+    CHECK_COM_ERROR(hr, "failed to create enumerator moniker", goto done)
 
     if (hr != S_OK)
     {
