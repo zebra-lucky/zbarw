@@ -136,30 +136,6 @@ static void DeleteMediaType(AM_MEDIA_TYPE* mt)
     CoTaskMemFree(mt);
 }
 
-/// Returns the first pin for the given direction.
-static IPin* dshow_get_pin(IBaseFilter* filter, 
-                           PIN_DIRECTION requested_direction)
-{
-    IPin* pin = NULL;
-
-    IEnumPins* enumerator;
-    IBaseFilter_EnumPins(filter, &enumerator);
-    while (IEnumPins_Next(enumerator, 1, &pin, 0) == S_OK)
-    {
-        PIN_DIRECTION pindir;
-        IPin_QueryDirection(pin, &pindir);
-        
-        if (pindir == requested_direction)
-            break;
-            
-        IPin_Release(pin);
-        pin = NULL;
-    }
-    IEnumPins_Release(enumerator);
-
-    return pin;  
-}
-
 static void make_fourcc_subtype(GUID* subtype, uint32_t fmt)
 {
     memcpy(subtype, &MEDIASUBTYPE_FOURCC_PLACEHOLDER, sizeof(GUID));
@@ -777,16 +753,12 @@ render_cleanup:
     // scope: after the graph is built (and the pins connected) we query the
     // final media type from sample grabber's input pin;
     {
-        IPin* inpin = NULL;
         AM_MEDIA_TYPE input_mt = {};
-        
-        inpin = dshow_get_pin(state->grabberbase, PINDIR_INPUT);
-        assert(inpin);
-        
-        hr = IPin_ConnectionMediaType(inpin, &input_mt);
+
+        hr = ISampleGrabber_GetConnectedMediaType(state->samplegrabber, &input_mt);
         CHECK_COM_ERROR(hr, "couldn't query input media type from sample grabber", goto cleanup1)
-        
-        
+
+
         assert(dshow_has_vih(&input_mt));
         const BITMAPINFOHEADER* bih = dshow_access_bih(&input_mt);
 
@@ -810,7 +782,6 @@ render_cleanup:
 
 cleanup1:
         DestroyMediaType(&input_mt);
-        COM_SAFE_RELEASE(&inpin);
         
         if (FAILED(hr))
             return -1;
