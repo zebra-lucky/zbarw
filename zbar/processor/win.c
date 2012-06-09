@@ -37,6 +37,14 @@ struct processor_state_s {
     ATOM registeredClass;
 };
 
+static HMODULE hmodDll = 0;
+
+BOOL WINAPI DllMain(HINSTANCE hinstDLL, DWORD fdwReason, LPVOID lpvReserved)
+{
+    if (fdwReason == DLL_PROCESS_ATTACH)
+        hmodDll = (HMODULE)hinstDLL;
+    return TRUE;
+}
 
 int _zbar_event_init (zbar_event_t *event)
 {
@@ -274,9 +282,12 @@ int _zbar_processor_open (zbar_processor_t *proc,
                           unsigned height)
 {
     HMODULE hmod = NULL;
-    if(!GetModuleHandleEx(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS |
-                          GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
-                          (void*)_zbar_processor_open, (HINSTANCE*)&hmod))
+    if(hmodDll)
+        hmod = hmodDll;
+    else
+        // in case of static linking, get the exe handle
+        hmod = GetModuleHandle(NULL);
+    if(!hmod)
         return(err_capture(proc, SEV_ERROR, ZBAR_ERR_WINAPI, __func__,
                            "failed to obtain module handle"));
 
