@@ -116,6 +116,7 @@ static const REFGUID mjpg_conversion_mediatype = &MEDIASUBTYPE_RGB32;
 static const int mjpg_conversion_fmt = fourcc('B','G','R','4');
 static const int mjpg_conversion_fmt_bpp = 32;
 
+static long grabbed_count = 0;
 
 // Destroy (Release) the format block for a media type.
 static void DestroyMediaType(AM_MEDIA_TYPE* mt)
@@ -410,12 +411,14 @@ HRESULT __stdcall zbar_samplegrabber_cb_BufferCB(ISampleGrabberCB* _This, double
         return S_OK;
 
 
+    grabbed_count++;
     zbar_samplegrabber_cb* This = (zbar_samplegrabber_cb*)_This;
     zbar_video_t* vdo = This->vdo;
 
     _zbar_mutex_lock(&vdo->qlock);
 
-    zprintf(16, "got sample: %p (%ld), thr=%04lx\n", buffer, bufferlen, _zbar_thread_self());
+    zprintf(16, "got sample no %ld: %p (%ld), thr=%04lx\n", grabbed_count,
+            buffer, bufferlen, _zbar_thread_self());
 
     zbar_image_t* img = vdo->state->image;
     if (!img)
