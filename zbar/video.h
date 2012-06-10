@@ -101,9 +101,10 @@ struct zbar_video_s {
 };
 
 
-/* video.next_image and video.recycle_image have to be thread safe
- * wrt/other apis
- */
+/// Locks `vdo->qlock`.
+/** video.next_image and video.recycle_image have to be thread safe
+  * wrt/other apis
+  */
 static inline int video_lock (zbar_video_t *vdo)
 {
     int rc = 0;
@@ -116,6 +117,7 @@ static inline int video_lock (zbar_video_t *vdo)
     return(0);
 }
 
+/// Unlocks `vdo->qlock`.
 static inline int video_unlock (zbar_video_t *vdo)
 {
     int rc = 0;

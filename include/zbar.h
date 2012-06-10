@@ -1036,6 +1036,10 @@ extern int zbar_video_enable(zbar_video_t *video,
                              int enable);
 
 /** retrieve next captured image.  blocks until an image is available.
+ * <p>Implementation note:<br>
+ * Platform dependent part, performing actual blocking, is done through
+ * zbar_video_s#dq function pointer.
+ * Implementations of zbar_video_s#dq are in zbar/video directory.
  * @returns NULL if video is not enabled or an error occurs
  */
 extern zbar_image_t *zbar_video_next_image(zbar_video_t *video);

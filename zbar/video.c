@@ -346,6 +346,7 @@ zbar_image_t *zbar_video_next_image (zbar_video_t *vdo)
     }
 
     frame = vdo->frame++;
+    // receive an image from platform dependent part (blocking call)
     img = vdo->dq(vdo);
     if(img) {
         img->seq = frame;

@@ -490,6 +490,13 @@ static int dshow_nq(zbar_video_t* vdo, zbar_image_t* img)
     return video_nq_image(vdo, img);
 }
 
+/// Platform dependent part of #zbar_video_next_image, which blocks
+/// until an image is available.
+/** Must be called with video lock held and returns
+  * with the lock released.
+  * <p>Waits for the image from `vdo->state->image`. If available,
+  * this field is nulled. Releases the lock temporarily when waiting for
+  * the `vdo->state->captured` signal. */
 static zbar_image_t* dshow_dq(zbar_video_t* vdo)
 {
     zbar_image_t* img = vdo->state->image;
