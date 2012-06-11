@@ -506,21 +506,31 @@ static zbar_image_t* dshow_dq(zbar_video_t* vdo)
     if (!img) {
         _zbar_mutex_unlock(&vdo->qlock);
         DWORD rc = WaitForSingleObject(vdo->state->captured, INFINITE);
+            // note: until we get the lock again the grabber thread might 
+            // already provide the next sample (which is fine)
         _zbar_mutex_lock(&vdo->qlock);
-        if (rc == WAIT_OBJECT_0)
+
+        assert(rc == WAIT_OBJECT_0  ||  rc == WAIT_FAILED);
+        switch (rc)
+        {
+        case WAIT_OBJECT_0:
+        // owning thread abandoned event handle, we just grab it
+        case WAIT_ABANDONED:
             img = vdo->state->image;
-        else
-            img = NULL;
-        /*FIXME handle errors? */
+            break;
+        case WAIT_FAILED:
+            err_capture_num(vdo, SEV_ERROR, ZBAR_ERR_WINAPI, __func__, 
+                            "Waiting for image failed", GetLastError());
+            break;
+        }
     }
-    else
-        ResetEvent(vdo->state->captured);
-    if (img)
-        vdo->state->image = NULL;
 
     zprintf(16, "img: %p (srcidx: %d, data: %p, len: %ld), thr=%04lx\n", img, img ? img->srcidx : 0, img ? img->data : NULL, img ? img->datalen : 0, _zbar_thread_self());
 
+    vdo->state->image = NULL;
+    ResetEvent(vdo->state->captured);
     video_unlock(vdo);
+
     return img;
 }
 
@@ -1143,7 +1153,8 @@ int _zbar_video_open (zbar_video_t* vdo, const char* dev)
 
 
     if (!state->captured)
-        state->captured = CreateEvent(NULL, 0, 0, NULL);
+        // create manual reset event
+        state->captured = CreateEvent(NULL, TRUE, FALSE, NULL);
     else
         ResetEvent(state->captured);
 
