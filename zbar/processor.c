@@ -211,11 +211,23 @@ static ZTHREAD proc_video_thread (void *arg)
         zbar_image_t *img = zbar_video_next_image(proc->video);
         _zbar_mutex_lock(&proc->mutex);
 
-        if(!img && !proc->streaming)
+        // two reasons for img==NULL:
+        // 1) because vdo->active==false;
+        //    
+        //    multithreading issue: because vdo->active and proc->streaming
+        //    are controlled by different mutexes, zbar_processor_set_active
+        //    might already have deactivated video but not yet streaming.
+        //    therefore proc->streaming can be true or false
+        //    
+        // 2) because the dq function of the driver failed to acquire a sample
+        //    for very unlikely reasons (except for bugs);
+        //    
+        //    even if errors happen the video thread shouldn't be stopped
+        //    by a break (IMO, klaus triendl): this would have the 
+        //    consequence that processing doesn't start anymore when calling
+        //    zbar_process_one multiple times with the same processor instance.
+        if(!img)
             continue;
-        else if(!img)
-            /* FIXME could abort streaming and keep running? */
-            break;
 
         /* acquire API lock */
         _zbar_processor_lock(proc);
