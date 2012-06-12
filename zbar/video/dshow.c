@@ -510,13 +510,16 @@ static zbar_image_t* dshow_dq(zbar_video_t* vdo)
             // already provide the next sample (which is fine)
         _zbar_mutex_lock(&vdo->qlock);
 
+        // error handling
         assert(rc == WAIT_OBJECT_0  ||  rc == WAIT_FAILED);
         switch (rc)
         {
         case WAIT_OBJECT_0:
-        // owning thread abandoned event handle, we just grab it
-        case WAIT_ABANDONED:
             img = vdo->state->image;
+            break;
+        case WAIT_ABANDONED:
+            err_capture(vdo, SEV_ERROR, ZBAR_INVALID, __func__,
+                        "event handle abandoned");
             break;
         case WAIT_FAILED:
             err_capture_num(vdo, SEV_ERROR, ZBAR_ERR_WINAPI, __func__, 
