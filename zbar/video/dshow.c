@@ -518,7 +518,7 @@ static zbar_image_t* dshow_dq(zbar_video_t* vdo)
             img = vdo->state->image;
             break;
         case WAIT_ABANDONED:
-            err_capture(vdo, SEV_ERROR, ZBAR_INVALID, __func__,
+            err_capture(vdo, SEV_ERROR, ZBAR_ERR_INVALID, __func__,
                         "event handle abandoned");
             break;
         case WAIT_FAILED:
