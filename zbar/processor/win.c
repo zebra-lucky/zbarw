@@ -32,6 +32,19 @@
                    WS_MAXIMIZEBOX)
 #define EXT_STYLE (WS_EX_APPWINDOW | WS_EX_OVERLAPPEDWINDOW)
 
+// Pseudo variable provided by the linker for the module's base address of 
+// either the DLL when compiled as DLL or the EXE when compiled as library.
+// We use it to achieve WIN2K compatibility.
+// 
+// The variable is available since _MSC_VER>=1400 and 
+// __MINGW32_MAJOR_VERSION>= ?, works on win32 and win64.
+// 
+// refer to the following blogs for its 'official' documentation:
+// http://blogs.msdn.com/b/oldnewthing/archive/2004/10/25/247180.aspx
+// http://my.opera.com/Tringi/blog/getcurrentmodulehandle
+#if WINVER < 0x0501 /* less than XP */
+extern IMAGE_DOS_HEADER __ImageBase;
+#endif
 
 struct processor_state_s {
     ATOM registeredClass;
@@ -274,11 +287,17 @@ int _zbar_processor_open (zbar_processor_t *proc,
                           unsigned height)
 {
     HMODULE hmod = NULL;
+    
+    #if WINVER >= 0x0501 /* at least XP */
     if(!GetModuleHandleEx(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS |
                           GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
                           (void*)_zbar_processor_open, (HINSTANCE*)&hmod))
         return(err_capture(proc, SEV_ERROR, ZBAR_ERR_WINAPI, __func__,
                            "failed to obtain module handle"));
+    #else
+    // WIN2K does not support GetModuleHandleEx
+    hmod = (HINSTANCE)&__ImageBase;
+    #endif
 
     ATOM wca = win_register_class(hmod);
     if(!wca)
