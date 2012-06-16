@@ -522,8 +522,8 @@ static zbar_image_t* dshow_dq(zbar_video_t* vdo)
                         "event handle abandoned");
             break;
         case WAIT_FAILED:
-            err_capture_num(vdo, SEV_ERROR, ZBAR_ERR_WINAPI, __func__, 
-                            "Waiting for image failed", GetLastError());
+            err_capture(vdo, SEV_ERROR, ZBAR_ERR_WINAPI, __func__, 
+                        "Waiting for image failed");
             break;
         }
     }
