@@ -248,9 +248,7 @@ int main (int argc, const char *argv[])
         zbar_processor_force_format(proc, infmt, outfmt);
 
     /* open video device, open window */
-    if(zbar_processor_init(proc, video_device, display) ||
-       /* show window */
-       (display && zbar_processor_set_visible(proc, 1)))
+    if(zbar_processor_init(proc, video_device, display))
         return(zbar_processor_error_spew(proc, 0));
 
     if(format == XML) {
