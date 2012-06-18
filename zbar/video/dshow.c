@@ -510,8 +510,6 @@ static zbar_image_t* dshow_dq(zbar_video_t* vdo)
             // already provide the next sample (which is fine)
         _zbar_mutex_lock(&vdo->qlock);
 
-        // error handling
-        assert(rc == WAIT_OBJECT_0  ||  rc == WAIT_FAILED);
         switch (rc)
         {
         case WAIT_OBJECT_0:
