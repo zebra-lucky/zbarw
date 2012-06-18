@@ -34,49 +34,19 @@
         static const GUID DECLSPEC_SELECTANY name \
                 = { l, w1, w2, { b1, b2,  b3,  b4,  b5,  b6,  b7,  b8 } }
 
-/* -------- */
-/* define guids found in uuid.h, but for which we're missing the lib */
-
-// e436ebb3-524f-11ce-9f53-0020af0ba770           Filter Graph
-ZBAR_DEFINE_STATIC_GUID(CLSID_FilterGraph,
-0xe436ebb3, 0x524f, 0x11ce, 0x9f, 0x53, 0x00, 0x20, 0xaf, 0x0b, 0xa7, 0x70);
-// 62BE5D10-60EB-11d0-BD3B-00A0C911CE86                 ICreateDevEnum
-ZBAR_DEFINE_STATIC_GUID(CLSID_SystemDeviceEnum,
-0x62BE5D10,0x60EB,0x11d0,0xBD,0x3B,0x00,0xA0,0xC9,0x11,0xCE,0x86);
-// 860BB310-5D01-11d0-BD3B-00A0C911CE86                 Video capture category
-ZBAR_DEFINE_STATIC_GUID(CLSID_VideoInputDeviceCategory,
-0x860BB310,0x5D01,0x11d0,0xBD,0x3B,0x00,0xA0,0xC9,0x11,0xCE,0x86);
-// BF87B6E1-8C27-11d0-B3F0-00AA003761C5     New Capture graph building
-ZBAR_DEFINE_STATIC_GUID(CLSID_CaptureGraphBuilder2,
-0xBF87B6E1, 0x8C27, 0x11d0, 0xB3, 0xF0, 0x0, 0xAA, 0x00, 0x37, 0x61, 0xC5);
+// this one is not in uuids.h yet
 // {301056D0-6DFF-11d2-9EEB-006008039E37}
 ZBAR_DEFINE_STATIC_GUID(CLSID_MjpegDec,
 0x301056d0, 0x6dff, 0x11d2, 0x9e, 0xeb, 0x0, 0x60, 0x8, 0x3, 0x9e, 0x37);
-
-// 73646976-0000-0010-8000-00AA00389B71  'vids' == MEDIATYPE_Video
-ZBAR_DEFINE_STATIC_GUID(MEDIATYPE_Video,
-0x73646976, 0x0000, 0x0010, 0x80, 0x00, 0x00, 0xaa, 0x00, 0x38, 0x9b, 0x71);
-// 05589f80-c356-11ce-bf01-00aa0055595a        FORMAT_VideoInfo
-ZBAR_DEFINE_STATIC_GUID(FORMAT_VideoInfo,
-0x05589f80, 0xc356, 0x11ce, 0xbf, 0x01, 0x00, 0xaa, 0x00, 0x55, 0x59, 0x5a);
-// e436eb7e-524f-11ce-9f53-0020af0ba770            MEDIASUBTYPE_RGB32
-ZBAR_DEFINE_STATIC_GUID(MEDIASUBTYPE_RGB32,
-0xe436eb7e, 0x524f, 0x11ce, 0x9f, 0x53, 0x00, 0x20, 0xaf, 0x0b, 0xa7, 0x70);
-
-// fb6c4282-0353-11d1-905f-0000c0cc16ba
-ZBAR_DEFINE_STATIC_GUID(PIN_CATEGORY_PREVIEW,
-0xfb6c4282, 0x0353, 0x11d1, 0x90, 0x5f, 0x00, 0x00, 0xc0, 0xcc, 0x16, 0xba);
-// {AC798BE1-98E3-11d1-B3F1-00AA003761C5}
-ZBAR_DEFINE_STATIC_GUID(LOOK_DOWNSTREAM_ONLY,
-0xac798be1, 0x98e3, 0x11d1, 0xb3, 0xf1, 0x0, 0xaa, 0x0, 0x37, 0x61, 0xc5);
-
-/* -------- */
-
 // define a special guid that can be used for fourcc formats
 // 00000000-0000-0010-8000-00AA00389B71   == MEDIASUBTYPE_FOURCC_PLACEHOLDER
 ZBAR_DEFINE_STATIC_GUID(MEDIASUBTYPE_FOURCC_PLACEHOLDER,
 0x00000000, 0x0000, 0x0010, 0x80, 0x00, 0x00, 0xaa, 0x00, 0x38, 0x9b, 0x71);
 
+#define OUR_GUID_ENTRY(name, l, w1, w2, b1, b2, b3, b4, b5, b6, b7, b8) \
+    ZBAR_DEFINE_STATIC_GUID(name, l, w1, w2, b1, b2, b3, b4, b5, b6, b7, b8);
+
+#include <uuids.h>
 
 #define BIH_FMT "%ldx%ld @%dbpp (%lx) cmp=%.4s(%08lx) res=%ldx%ld clr=%ld/%ld (%lx)"
 #define BIH_FIELDS(bih)                                                 \
@@ -108,6 +78,15 @@ ZBAR_DEFINE_STATIC_GUID(MEDIASUBTYPE_FOURCC_PLACEHOLDER,
         stmt; \
     }
 
+static const struct uuid_desc_s {
+    const GUID *guid;
+    const char *name;
+} known_uuids[] = {
+    #define OUR_GUID_ENTRY(m_name, l, w1, w2, b1, b2, b3, b4, b5, b6, b7, b8)\
+    { &m_name, #m_name }, 
+    #include <uuids.h>
+    { NULL, NULL }
+};
 
 static const REFERENCE_TIME _100ns_unit = 1*1000*1000*1000 / 100;
 
@@ -267,6 +246,40 @@ static void dump_formats(zbar_video_t* vdo)
         zprintf(8, "  %.4s / %.4s\n", (char*)int_fmt, (char*)fmt);
         fmt++; int_fmt++;
     }
+}
+
+/// Allocates a string containing given guid.
+/** If it's among known CLSID's, its name is returned.
+  * Returned string should be freed with `free`. */
+static char* get_clsid_string(REFGUID guid)
+{
+    char *msg = NULL;
+    
+    // first try to determine guid name from the list
+    int i;
+    for (i = 0; known_uuids[i].name; i++)
+    {
+        if (IsEqualGUID(known_uuids[i].guid, guid))
+        {
+            msg = malloc(strlen(known_uuids[i].name));
+            strcpy(msg, known_uuids[i].name);
+            break;
+        }
+    }
+    
+    // if that failed, give the ugly string
+    if (msg == NULL)
+    {
+        LPOLESTR str = L"ERROR";
+        HRESULT hr = StringFromCLSID(guid, &str);
+        int c = WideCharToMultiByte(CP_UTF8, 0, str, -1, NULL, 0, NULL, NULL);
+        msg = malloc(c);
+        WideCharToMultiByte(CP_UTF8, 0, str, -1, msg, c, NULL, NULL);
+        if (!FAILED(hr))
+            CoTaskMemFree(str);
+    }
+    
+    return msg;
 }
 
 /// Maps internal format MJPG (if found) to a format known to
@@ -897,6 +910,7 @@ static int dshow_determine_formats(zbar_video_t* vdo)
         AM_MEDIA_TYPE* mt;
         HRESULT hr = IAMStreamConfig_GetStreamCaps(state->camstreamconfig, i, &mt, caps);
         CHECK_COM_ERROR(hr, "querying stream capability failed", continue)
+        int is_supported = 0;
 
         if (dshow_has_vih(mt))
         {
@@ -904,6 +918,7 @@ static int dshow_determine_formats(zbar_video_t* vdo)
             if (dshow_is_fourcc_guid(&mt->subtype))
             {
                 zprintf(6, "supported format/resolution: " BIH_FMT "\n", BIH_FIELDS(bih));
+                is_supported = 1;
                 
                 // first search for existing fourcc format
                 int i;
@@ -923,6 +938,16 @@ static int dshow_determine_formats(zbar_video_t* vdo)
             // note: other format types could be possible, e.g. rgb bitmap (BI_RGB) ...
         }
         // note: other format types could be possible, e.g. VIDEOINFOHEADER2 ...
+
+        if (!is_supported)
+        {
+            char *formattype = get_clsid_string(&mt->formattype);
+            char *subtype = get_clsid_string(&mt->subtype);
+            zprintf(6, "unsupported format: %s / %s\n",
+                formattype, subtype);
+            free(formattype);
+            free(subtype);
+        }
 
         DeleteMediaType(mt);
     }
