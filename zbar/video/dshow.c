@@ -1,5 +1,6 @@
 /*------------------------------------------------------------------------
  *  Copyright 2012 (c) Klaus Triendl <klaus@triendl.eu>
+ *  Copyright 2012 (c) Jarek Czekalski <jarekczek@poczta.onet.pl>
  *
  *  This file is part of the ZBar Bar Code Reader.
  *
@@ -18,7 +19,7 @@
  *  Software Foundation, Inc., 51 Franklin St, Fifth Floor,
  *  Boston, MA  02110-1301  USA
  *
- *  http://sourceforge.net/projects/zbar
+ *  http://sourceforge.net/projects/zbarw
  *------------------------------------------------------------------------*/
 
 #include "video.h"
@@ -38,6 +39,7 @@
 // {301056D0-6DFF-11d2-9EEB-006008039E37}
 ZBAR_DEFINE_STATIC_GUID(CLSID_MjpegDec,
 0x301056d0, 0x6dff, 0x11d2, 0x9e, 0xeb, 0x0, 0x60, 0x8, 0x3, 0x9e, 0x37);
+
 // define a special guid that can be used for fourcc formats
 // 00000000-0000-0010-8000-00AA00389B71   == MEDIASUBTYPE_FOURCC_PLACEHOLDER
 ZBAR_DEFINE_STATIC_GUID(MEDIASUBTYPE_FOURCC_PLACEHOLDER,
@@ -118,7 +120,7 @@ static void DeleteMediaType(AM_MEDIA_TYPE* mt)
 
 static void make_fourcc_subtype(GUID* subtype, uint32_t fmt)
 {
-    memcpy(subtype, &MEDIASUBTYPE_FOURCC_PLACEHOLDER, sizeof(GUID));
+    *subtype = MEDIASUBTYPE_FOURCC_PLACEHOLDER;
     subtype->Data1 = fmt;
 }
 
@@ -142,11 +144,36 @@ static inline int dshow_has_vih(AM_MEDIA_TYPE* mt)
     return isvih;
 }
 
+/// Access the BITMAPINFOHEADER in the given AM_MEDIA_TYPE,
+/// access is non-const
 static inline BITMAPINFOHEADER* dshow_access_bih(AM_MEDIA_TYPE* mt)
 {
     VIDEOINFOHEADER* vih = (VIDEOINFOHEADER*) mt->pbFormat;
     return &vih->bmiHeader;
 }
+
+/// Access the BITMAPINFOHEADER in the given AM_MEDIA_TYPE,
+/// access is const
+static inline const BITMAPINFOHEADER* dshow_caccess_bih(const AM_MEDIA_TYPE* mt)
+{
+    VIDEOINFOHEADER* vih = (VIDEOINFOHEADER*) mt->pbFormat;
+    return &vih->bmiHeader;
+}
+
+/// Returns 1 if the struct is null, otherwise 0
+static int struct_null(const void *pdata, const int len)
+    {
+        int i;
+        for (i = 0; i < len; i++)
+        {
+            if (((char*)pdata)[i] != 0)
+            {
+                return 0;
+            }
+        }
+        return 1;
+    }
+#define struct_null(pdata) struct_null(pdata, sizeof(*pdata))
 
 /// Flips the image vertically copying it from srcBuf to img.
 /** @param bpp Bits Per Pixel */
@@ -166,6 +193,17 @@ static void flip_vert(zbar_image_t* const img, void* const srcBuf, int bpp)
     assert(src + bytesPerLine == srcBuf);
 }
 
+/// Internal format information
+struct int_format_s
+{
+    uint32_t fourcc;
+    /// compression in bih structure, may differ from one used by zbar
+    uint32_t biCompression;
+    WORD biBitCount;
+    GUID formattype;   ///< copied from AM_MEDIA_TYPE
+    GUID subtype;      ///< copied from AM_MEDIA_TYPE
+};
+typedef struct int_format_s int_format_t; 
 
 struct video_state_s
 {
@@ -194,7 +232,7 @@ struct video_state_s
       * the consecutive entries correspond to each other, making a mapping
       * between internal (camera) formats and zbar formats
       * (presented to zbar processor). */
-    uint32_t *int_formats;
+    int_format_t *int_formats;
 };
 
 static void dshow_destroy_video_state_t(video_state_t* state)
@@ -218,7 +256,7 @@ static void dshow_destroy_video_state_t(video_state_t* state)
 /// Returns the index of the given format in formats array.
 /** If not found, returns -1. The array is constructed like
   * <code>vdo->formats</code>, with the terminating null. */
-int get_format_index(uint32_t* fmts, uint32_t fmt0)
+static int get_format_index(uint32_t* fmts, uint32_t fmt0)
 {
     uint32_t *fmt;
     int i = 0;
@@ -233,17 +271,53 @@ int get_format_index(uint32_t* fmts, uint32_t fmt0)
         return -1;
 }
 
+/// Returns the index of the given format in internal formats array.
+/** If not found, returns -1. The array is constructed like
+  * <code>vdo->state->int_formats</code>, with the terminating zeroed
+  * element. */
+/** @param fmt0 A fourcc format code */
+static int get_int_format_index(int_format_t *fmts, uint32_t fmt0)
+{
+    int_format_t *fmt;
+    int i = 0;
+    for (fmt = fmts; !struct_null(fmt); fmt++) {
+        if (fmt->fourcc == fmt0)
+            break;
+        i++;
+    }
+    if (!struct_null(fmt))
+        return i;
+    else
+        return -1;
+}
+
+/// Gets the fourcc code for the given media type.
+/** This is necessary because of non-standard coding of video
+  * formats by Windows, for example BGR3/4 = BI_RGB . */
+static uint32_t get_fourcc_for_mt(const AM_MEDIA_TYPE* mt)
+{
+    if IsEqualGUID(&mt->subtype, &MEDIASUBTYPE_RGB24)
+        return fourcc('B','G','R','3');
+    else if IsEqualGUID(&mt->subtype, &MEDIASUBTYPE_RGB32)
+        return fourcc('B','G','R','4');
+    else if (dshow_is_fourcc_guid(&mt->subtype))
+        return mt->subtype.Data1;
+    else
+        return 0;
+}
+
 /// Dumps the mapping of internal and external formats, if the debug level
 /// is sufficient.
 static void dump_formats(zbar_video_t* vdo)
 {
     video_state_t* state = vdo->state;
-    uint32_t *fmt, *int_fmt;
+    uint32_t *fmt;
+    int_format_t *int_fmt;
     zprintf(8, "Detected formats: (internal) / (translated for zbar)\n");
     fmt = vdo->formats;
     int_fmt = state->int_formats;
     while (*fmt) {
-        zprintf(8, "  %.4s / %.4s\n", (char*)int_fmt, (char*)fmt);
+        zprintf(8, "  %.4s / %.4s\n", (char*)&int_fmt->fourcc, (char*)fmt);
         fmt++; int_fmt++;
     }
 }
@@ -291,8 +365,8 @@ static void prepare_mjpg_format_mapping(zbar_video_t* vdo)
     video_state_t* state = vdo->state;
     /// The format we will convert MJPG to
     uint32_t fmtConv = mjpg_conversion_fmt;
-
-    int iMjpg = get_format_index(state->int_formats, fourcc('M','J','P','G'));
+    int iMjpg = get_int_format_index(state->int_formats,
+                                     fourcc('M','J','P','G'));
     if (iMjpg < 0)
         return;
     assert(vdo->formats[iMjpg] == fourcc('M','J','P','G'));
@@ -305,7 +379,7 @@ static void prepare_mjpg_format_mapping(zbar_video_t* vdo)
     // we prefer better quality images.
 
     // The index of fmtConv before mapping mjpg to fmtConv
-    int iMjpgConv = get_format_index(state->int_formats, fmtConv);
+    int iMjpgConv = get_int_format_index(state->int_formats, fmtConv);
 
     if (iMjpgConv >= 0) {
         // remove the iMjpgConv entry by moving the following entries by 1
@@ -595,7 +669,7 @@ static int dshow_set_format (zbar_video_t* vdo,
                                "unsupported vfw format: %x", fmt));
 
     video_state_t* state = vdo->state;
-    int int_fmt = state->int_formats[fmt_ind];
+    int_format_t *int_fmt = &state->int_formats[fmt_ind];
 
     
     // first, get current camera format
@@ -609,33 +683,16 @@ static int dshow_set_format (zbar_video_t* vdo,
 
     
     // then, adjust the format
-
-    // must set fmt in subtype guid, because dshow doesn't consider the BMIH
-    make_fourcc_subtype(&currentmt->subtype, int_fmt);
-
     bih->biWidth = vdo->width;
     bih->biHeight = vdo->height;
-    switch(fmtdef->group)
-    {
-    case ZBAR_FMT_GRAY:
-        bih->biBitCount = 8;
-        break;
-    case ZBAR_FMT_YUV_PLANAR:
-    case ZBAR_FMT_YUV_PACKED:
-    case ZBAR_FMT_YUV_NV:
-        bih->biBitCount = 8 + (16 >> (fmtdef->p.yuv.xsub2 + fmtdef->p.yuv.ysub2));
-        break;
-    case ZBAR_FMT_RGB_PACKED:
-        bih->biBitCount = fmtdef->p.rgb.bpp * 8;
-        break;
-    default:
-        bih->biBitCount = 0;
-    }
+    bih->biCompression = int_fmt->biCompression;
+    bih->biBitCount = int_fmt->biBitCount;
     bih->biClrUsed = bih->biClrImportant = 0;
-    bih->biCompression = int_fmt;
+    // must set fmt in subtype guid, because dshow doesn't consider the BMIH
+    currentmt->subtype = int_fmt->subtype;
 
     zprintf(4, "setting camera format: %.4s(%08x) " BIH_FMT "\n",
-            (char*)&int_fmt, int_fmt, BIH_FIELDS(bih));
+            (char*)&int_fmt->fourcc, int_fmt->fourcc, BIH_FIELDS(bih));
 
     hr = IAMStreamConfig_SetFormat(state->camstreamconfig, currentmt);
     CHECK_COM_ERROR(hr, "setting camera format failed", goto cleanup)
@@ -651,8 +708,7 @@ static int dshow_set_format (zbar_video_t* vdo,
     
     bih = dshow_access_bih(currentmt);
 
-    if (!dshow_is_fourcc_guid(&currentmt->subtype) || 
-        bih->biCompression != int_fmt)
+    if (get_fourcc_for_mt(currentmt) != int_fmt->fourcc)
     {
         rc = err_capture(vdo, SEV_ERROR, ZBAR_ERR_INVALID, __func__,
                          "video format set ignored");
@@ -666,7 +722,7 @@ static int dshow_set_format (zbar_video_t* vdo,
 
     // datalen was set based on the internal format, but sometimes it's
     // different from the format reported to zbar processor
-    if (vdo->formats[fmt_ind] != state->int_formats[fmt_ind]) {
+    if (vdo->formats[fmt_ind] != state->int_formats[fmt_ind].fourcc) {
         // See prepare_mjpg_format_mapping for possible differences
         // between internal and zbar format.
         vdo->datalen = BMP_SIZE(vdo->width, vdo->height,
@@ -674,7 +730,7 @@ static int dshow_set_format (zbar_video_t* vdo,
     }
 
     zprintf(4, "set camera format: %.4s(%08x) " BIH_FMT "\n",
-            (char*)&int_fmt, int_fmt, BIH_FIELDS(bih));
+            (char*)&int_fmt->fourcc, int_fmt->fourcc, BIH_FIELDS(bih));
 
 cleanup:
     DeleteMediaType(currentmt);
@@ -713,7 +769,7 @@ static int dshow_init(zbar_video_t* vdo, uint32_t fmt)
 
     // special handling for MJPG streams:
     // we use the stock mjpeg decompressor filter
-    if (state->int_formats[fmt_ind] == fourcc('M','J','P','G'))
+    if (state->int_formats[fmt_ind].fourcc == fourcc('M','J','P','G'))
     {
         IBaseFilter* mjpgdecompressor = NULL;
         hr = CoCreateInstance(&CLSID_MjpegDec, NULL, CLSCTX_INPROC_SERVER, &IID_IBaseFilter, (void**)&mjpgdecompressor);
@@ -794,7 +850,7 @@ render_cleanup:
 
 
         assert(dshow_has_vih(&input_mt));
-        const BITMAPINFOHEADER* bih = dshow_access_bih(&input_mt);
+        const BITMAPINFOHEADER* bih = dshow_caccess_bih(&input_mt);
 
         // adjust state->bih
         state->bi_size = bih->biSize;
@@ -804,13 +860,9 @@ render_cleanup:
         
         if (bih->biCompression == BI_RGB)
         {
-            // check bitmap orientation:
+            // check bitmap orientation for native BI_RGB:
             // positive biHeight: bottom-up bitmap -> flip
             // negative biHeight: top-down bitmap
-            // 
-            // note: this step is practically unnecessary because the sample 
-            // grabber doesn't support top-down video types anyway but I want 
-            // this to be independent
             state->do_flip_bitmap = (bih->biHeight > 0);
         }
 
@@ -899,7 +951,7 @@ static int dshow_determine_formats(zbar_video_t* vdo)
     zprintf(6, "list of those with a VIDEOINFOHEADER:\n");
 
     vdo->formats = calloc(resolutions+1, sizeof(uint32_t));
-    state->int_formats = calloc(resolutions+1, sizeof(uint32_t));
+    state->int_formats = calloc(resolutions+1, sizeof(int_format_t));
 
     // this is actually a VIDEO_STREAM_CONFIG_CAPS structure, which is mostly deprecated anyway,
     // so we just reserve enough buffer but treat it as opaque otherwise
@@ -914,28 +966,36 @@ static int dshow_determine_formats(zbar_video_t* vdo)
 
         if (dshow_has_vih(mt))
         {
-            const BITMAPINFOHEADER* bih = dshow_access_bih(mt);
-            if (dshow_is_fourcc_guid(&mt->subtype))
+            const BITMAPINFOHEADER* bih = dshow_caccess_bih(mt);
+
+            zprintf(6, BIH_FMT "\n",
+                    BIH_FIELDS(bih));
+            uint32_t fmt = get_fourcc_for_mt(mt);
+            // This is actually a check if the format is recognized.
+            // TODO: Check if the format is really supported by zbar.
+            is_supported = (fmt != 0);
+            
+            if (is_supported)
             {
-                zprintf(6, "supported format/resolution: " BIH_FMT "\n", BIH_FIELDS(bih));
-                is_supported = 1;
-                
                 // first search for existing fourcc format
                 int i;
                 for (i = 0; i < n; ++i)
                 {
-                    if (state->int_formats[i] == bih->biCompression)
+                    if (state->int_formats[i].fourcc == fmt)
                         break;
                 }
                 // push back if not found
                 if (i == n)
                 {
-                    state->int_formats[n] = bih->biCompression;
-                    vdo->formats[n] = bih->biCompression;
+                    state->int_formats[n].fourcc = fmt;
+                    state->int_formats[n].biCompression = bih->biCompression;
+                    state->int_formats[n].biBitCount = bih->biBitCount;
+                    state->int_formats[n].formattype = mt->formattype;
+                    state->int_formats[n].subtype = mt->subtype;
+                    vdo->formats[n] = fmt;
                     ++n;
                 }
             }
-            // note: other format types could be possible, e.g. rgb bitmap (BI_RGB) ...
         }
         // note: other format types could be possible, e.g. VIDEOINFOHEADER2 ...
 
@@ -957,7 +1017,7 @@ static int dshow_determine_formats(zbar_video_t* vdo)
 
     vdo->formats = realloc(vdo->formats, (n + 1) * sizeof(uint32_t));
     state->int_formats = realloc(state->int_formats,
-                                 (n + 1) * sizeof(uint32_t));
+                                 (n + 1) * sizeof(int_format_t));
     prepare_mjpg_format_mapping(vdo);
     dump_formats(vdo);
 
@@ -999,26 +1059,11 @@ static int dshow_probe(zbar_video_t* vdo)
         CoTaskMemFree(str);
         goto freemt;
     }
-    // check whether we're dealing with a fourcc media type;
-    // In case it's not it might be possible that it's a rgb bitmap (BI_RGB), 
-    // which we could map to fourcc formats, but as far as I know current 
-    // cameras don't provide uncompressed bitmap streams.
-    if (!dshow_is_fourcc_guid(&currentmt->subtype))
-    {
-        LPOLESTR str = NULL;
-        hr = StringFromCLSID(&currentmt->subtype, &str);
-        CHECK_COM_ERROR(hr, "StringFromCLSID() failed", (void)0)
-        err_capture(vdo, SEV_ERROR, ZBAR_ERR_INVALID, __func__,
-                    "unsupported initial format");
-        zwprintf(1, L"encountered unsupported initial format: %s\n", str);
-        CoTaskMemFree(str);
-        goto freemt;
-    }
+
+    const BITMAPINFOHEADER* current_bih = dshow_caccess_bih(currentmt);
 
     // scope: store bitmapinfoheader (initial format and size)
     {
-        const BITMAPINFOHEADER* current_bih = dshow_access_bih(currentmt);
-
         zprintf(3, "initial format: %.4s(%08lx) " BIH_FMT "\n",
                (char*)&current_bih->biCompression, current_bih->biCompression, 
                 BIH_FIELDS(current_bih));
