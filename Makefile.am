@@ -66,13 +66,13 @@ dist_doc_DATA += README.windows
 pkgdata_DATA = $(srcdir)/examples/barcode.png \
     $(srcdir)/examples/scan_image.cpp $(srcdir)/examples/scan_image.vcproj
 
-%-rc.o: %.rc
-	$(RC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) \
-	$(AM_CPPFLAGS) $(CPPFLAGS) -o $@ $<
-%-rc.lo: %.rc
+# formerly %-rc.o: %.rc, but it was not cleaning -rc.o files
+.rc.o:
+	$(RC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) -o $@ $<
+# formerly %-rc.lo: %.rc
+.rc.lo:
 	$(LIBTOOL) --tag=RC $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) \
-	--mode=compile $(RC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) \
-	$(AM_CPPFLAGS) $(CPPFLAGS) -o $@ $<
+	--mode=compile $(RC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) -o $@ $<
 
 # install to tmp dest and run NSIS to generate installer
 dist-nsis: html-local

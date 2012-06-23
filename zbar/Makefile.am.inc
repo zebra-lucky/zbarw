@@ -53,11 +53,9 @@ zbar_libzbar_la_SOURCES += zbar/qrcode.h \
 endif
 
 if WIN32
-zbar_libzbar_la_SOURCES += zbar/processor/win.h zbar/processor/win.c zbar/libzbar.rc
+zbar_libzbar_la_SOURCES += zbar/processor/win.h zbar/processor/win.c zbar/libzbar-rc.rc
 zbar_libzbar_la_CPPFLAGS += -mthreads
 zbar_libzbar_la_LDFLAGS += -mthreads
-# FIXME broken
-zbar_libzbar_la_LIBADD += zbar/libzbar-rc.lo
 else
 zbar_libzbar_la_SOURCES += zbar/processor/posix.h zbar/processor/posix.c
 endif

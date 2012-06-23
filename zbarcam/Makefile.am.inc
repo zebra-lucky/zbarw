@@ -5,6 +5,5 @@ zbarcam_zbarcam_LDADD = zbar/libzbar.la
 CLEANFILES += zbarcam/.libs/zbarcam
 
 if WIN32
-zbarcam_zbarcam_SOURCES += zbarcam/zbarcam.rc
-zbarcam_zbarcam_LDADD += zbarcam/zbarcam-rc.o
+zbarcam_zbarcam_SOURCES += zbarcam/zbarcam-rc.rc
 endif
