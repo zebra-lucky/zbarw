@@ -12,7 +12,7 @@ zbar_libzbar_la_SOURCES = zbar/debug.h zbar/config.c \
     zbar/event.h zbar/thread.h \
     zbar/window.h zbar/window.c zbar/video.h zbar/video.c \
     zbar/img_scanner.h zbar/img_scanner.c zbar/scanner.c \
-    zbar/decoder.h zbar/decoder.c
+    zbar/decoder.h zbar/decoder.c zbar/misc.c
 
 EXTRA_zbar_libzbar_la_SOURCES = zbar/svg.h zbar/svg.c
 

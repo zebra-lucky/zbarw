@@ -24,6 +24,7 @@
 
 #include "video.h"
 #include "thread.h"
+#include "misc.h"
 #include <objbase.h>
 #include <strmif.h>
 #include <control.h>
@@ -160,21 +161,6 @@ static inline const BITMAPINFOHEADER* dshow_caccess_bih(const AM_MEDIA_TYPE* mt)
     return &vih->bmiHeader;
 }
 
-/// Returns 1 if the struct is null, otherwise 0
-static int struct_null(const void *pdata, const int len)
-    {
-        int i;
-        for (i = 0; i < len; i++)
-        {
-            if (((char*)pdata)[i] != 0)
-            {
-                return 0;
-            }
-        }
-        return 1;
-    }
-#define struct_null(pdata) struct_null(pdata, sizeof(*pdata))
-
 /// Flips the image vertically copying it from srcBuf to img.
 /** @param bpp Bits Per Pixel */
 static void flip_vert(zbar_image_t* const img, void* const srcBuf, int bpp)
@@ -202,6 +188,7 @@ struct int_format_s
     WORD biBitCount;
     GUID formattype;   ///< copied from AM_MEDIA_TYPE
     GUID subtype;      ///< copied from AM_MEDIA_TYPE
+    resol_list_t resols; ///< resolutions list
 };
 typedef struct int_format_s int_format_t; 
 
@@ -233,6 +220,8 @@ struct video_state_s
       * between internal (camera) formats and zbar formats
       * (presented to zbar processor). */
     int_format_t *int_formats;
+    resol_t def_res;                  /* initial resolution read
+                                         from the camera */
 };
 
 static void dshow_destroy_video_state_t(video_state_t* state)
@@ -250,6 +239,14 @@ static void dshow_destroy_video_state_t(video_state_t* state)
         CloseHandle(state->captured);
 
     free(state->bih);
+
+    if (state->int_formats)
+    {
+        int_format_t *fmt;
+        for (fmt = state->int_formats; !struct_null(fmt); fmt++) {
+            resol_list_cleanup(&fmt->resols);
+        }
+    }
     free(state->int_formats);
 }
 
@@ -317,7 +314,8 @@ static void dump_formats(zbar_video_t* vdo)
     fmt = vdo->formats;
     int_fmt = state->int_formats;
     while (*fmt) {
-        zprintf(8, "  %.4s / %.4s\n", (char*)&int_fmt->fourcc, (char*)fmt);
+        zprintf(8, "  %.4s / %.4s, resolutions: %lu\n",
+            (char*)&int_fmt->fourcc, (char*)fmt, int_fmt->resols.cnt);
         fmt++; int_fmt++;
     }
 }
@@ -683,6 +681,15 @@ static int dshow_set_format (zbar_video_t* vdo,
 
     
     // then, adjust the format
+    if (!vdo->width || !vdo->height)
+    {
+        // video size not requested, take camera default
+        resol_t resol = vdo->state->def_res;
+        // the initial resolution may be not suitable for the current format
+        get_closest_resol(&resol, &int_fmt->resols);
+        vdo->width = resol.cx;
+        vdo->height = resol.cy;
+    }
     bih->biWidth = vdo->width;
     bih->biHeight = vdo->height;
     bih->biCompression = int_fmt->biCompression;
@@ -992,9 +999,12 @@ static int dshow_determine_formats(zbar_video_t* vdo)
                     state->int_formats[n].biBitCount = bih->biBitCount;
                     state->int_formats[n].formattype = mt->formattype;
                     state->int_formats[n].subtype = mt->subtype;
+                    resol_list_init(&state->int_formats[n].resols);
                     vdo->formats[n] = fmt;
                     ++n;
                 }
+                resol_t resol = { bih->biWidth, bih->biHeight };
+                resol_list_add(&state->int_formats[i].resols, &resol);
             }
         }
         // note: other format types could be possible, e.g. VIDEOINFOHEADER2 ...
@@ -1082,13 +1092,8 @@ freemt:
         return -1;
 
 
-    if (!vdo->width  ||  !vdo->height)
-    {
-        // video size not requested, take camera default
-
-        vdo->width = state_bih->biWidth;
-        vdo->height = state_bih->biHeight;
-    }
+    vdo->state->def_res.cx = state_bih->biWidth;
+    vdo->state->def_res.cy = state_bih->biHeight;
     vdo->datalen = state_bih->biSizeImage;
     vdo->intf = VIDEO_DSHOW;
     vdo->init = dshow_init;
