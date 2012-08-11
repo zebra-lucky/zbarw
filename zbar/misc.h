@@ -23,31 +23,33 @@
 #ifndef _MISC_H_
 #define _MISC_H_
 
-struct resol_s {
+struct resolution_s {
     long cx;
     long cy;
 };
-typedef struct resol_s resol_t;
+typedef struct resolution_s resolution_t;
 
-struct resol_list_s {
-    resol_t *resols;
+struct resolution_list_s {
+    resolution_t *resolutions;
     long cnt;
 };
-typedef struct resol_list_s resol_list_t;
+typedef struct resolution_list_s resolution_list_t;
 
-void resol_list_init(resol_list_t *list);
-void resol_list_cleanup(resol_list_t *list);
-void resol_list_add(resol_list_t *list, resol_t *resol);
-/// Fill <code>resol</code> with the closest resolution found in
+void resolution_list_init(resolution_list_t *list);
+void resolution_list_cleanup(resolution_list_t *list);
+void resolution_list_add(resolution_list_t *list, resolution_t *resolution);
+/// Fill <code>resolution</code> with the closest resolution found in
 /// <code>list</code>.
 /** If <code>list</code> is empty,
-  * the <code>resol</code> is unchanged. If <code>resol</code> is empty,
+  * the <code>resolution</code> is unchanged.
+  * If <code>resolution</code> is empty,
   * the biggest resolution is chosen. */
-void get_closest_resol(resol_t *resol, resol_list_t *list);
+void get_closest_resolution(resolution_t *resolution,
+                            resolution_list_t *list);
 
 /// Returns 1 if the struct is null, otherwise 0
-int struct_null_fun(const void *pdata, const int len);
+int is_struct_null_fun(const void *pdata, const int len);
 /// Returns 1 if the struct is null, otherwise 0
-#define struct_null(pdata) struct_null_fun(pdata, sizeof(*pdata))
+#define is_struct_null(pdata) is_struct_null_fun(pdata, sizeof(*pdata))
 
 #endif

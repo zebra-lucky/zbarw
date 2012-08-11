@@ -188,7 +188,7 @@ struct int_format_s
     WORD biBitCount;
     GUID formattype;   ///< copied from AM_MEDIA_TYPE
     GUID subtype;      ///< copied from AM_MEDIA_TYPE
-    resol_list_t resols; ///< resolutions list
+    resolution_list_t resolutions;
 };
 typedef struct int_format_s int_format_t; 
 
@@ -220,8 +220,8 @@ struct video_state_s
       * between internal (camera) formats and zbar formats
       * (presented to zbar processor). */
     int_format_t *int_formats;
-    resol_t def_res;                  /* initial resolution read
-                                         from the camera */
+    resolution_t def_resolution;    /* initial resolution read
+                                       from the camera */
 };
 
 static void dshow_destroy_video_state_t(video_state_t* state)
@@ -243,8 +243,8 @@ static void dshow_destroy_video_state_t(video_state_t* state)
     if (state->int_formats)
     {
         int_format_t *fmt;
-        for (fmt = state->int_formats; !struct_null(fmt); fmt++) {
-            resol_list_cleanup(&fmt->resols);
+        for (fmt = state->int_formats; !is_struct_null(fmt); fmt++) {
+            resolution_list_cleanup(&fmt->resolutions);
         }
     }
     free(state->int_formats);
@@ -277,12 +277,12 @@ static int get_int_format_index(int_format_t *fmts, uint32_t fmt0)
 {
     int_format_t *fmt;
     int i = 0;
-    for (fmt = fmts; !struct_null(fmt); fmt++) {
+    for (fmt = fmts; !is_struct_null(fmt); fmt++) {
         if (fmt->fourcc == fmt0)
             break;
         i++;
     }
-    if (!struct_null(fmt))
+    if (!is_struct_null(fmt))
         return i;
     else
         return -1;
@@ -315,7 +315,7 @@ static void dump_formats(zbar_video_t* vdo)
     int_fmt = state->int_formats;
     while (*fmt) {
         zprintf(8, "  %.4s / %.4s, resolutions: %lu\n",
-            (char*)&int_fmt->fourcc, (char*)fmt, int_fmt->resols.cnt);
+            (char*)&int_fmt->fourcc, (char*)fmt, int_fmt->resolutions.cnt);
         fmt++; int_fmt++;
     }
 }
@@ -684,11 +684,11 @@ static int dshow_set_format (zbar_video_t* vdo,
     if (!vdo->width || !vdo->height)
     {
         // video size not requested, take camera default
-        resol_t resol = vdo->state->def_res;
+        resolution_t resolution = vdo->state->def_resolution;
         // the initial resolution may be not suitable for the current format
-        get_closest_resol(&resol, &int_fmt->resols);
-        vdo->width = resol.cx;
-        vdo->height = resol.cy;
+        get_closest_resolution(&resolution, &int_fmt->resolutions);
+        vdo->width = resolution.cx;
+        vdo->height = resolution.cy;
     }
     bih->biWidth = vdo->width;
     bih->biHeight = vdo->height;
@@ -999,12 +999,13 @@ static int dshow_determine_formats(zbar_video_t* vdo)
                     state->int_formats[n].biBitCount = bih->biBitCount;
                     state->int_formats[n].formattype = mt->formattype;
                     state->int_formats[n].subtype = mt->subtype;
-                    resol_list_init(&state->int_formats[n].resols);
+                    resolution_list_init(&state->int_formats[n].resolutions);
                     vdo->formats[n] = fmt;
                     ++n;
                 }
-                resol_t resol = { bih->biWidth, bih->biHeight };
-                resol_list_add(&state->int_formats[i].resols, &resol);
+                resolution_t resolution = { bih->biWidth, bih->biHeight };
+                resolution_list_add(&state->int_formats[i].resolutions,
+                                    &resolution);
             }
         }
         // note: other format types could be possible, e.g. VIDEOINFOHEADER2 ...
@@ -1092,8 +1093,8 @@ freemt:
         return -1;
 
 
-    vdo->state->def_res.cx = state_bih->biWidth;
-    vdo->state->def_res.cy = state_bih->biHeight;
+    vdo->state->def_resolution.cx = state_bih->biWidth;
+    vdo->state->def_resolution.cy = state_bih->biHeight;
     vdo->datalen = state_bih->biSizeImage;
     vdo->intf = VIDEO_DSHOW;
     vdo->init = dshow_init;

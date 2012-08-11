@@ -35,72 +35,73 @@ static void module_init()
     module_initialized = 1;
 }
 
-void resol_list_init(resol_list_t *list)
+void resolution_list_init(resolution_list_t *list)
 {
     module_init();
     list->cnt = 0;
     // an empty list consists of 1 zeroed element
-    list->resols = calloc(1, sizeof(resol_t));
-    if (!list->resols)
+    list->resolutions = calloc(1, sizeof(resolution_t));
+    if (!list->resolutions)
     {
         err_capture(&err, SEV_FATAL, ZBAR_ERR_NOMEM,
             __func__, "allocating resources");
     }
 }
 
-void resol_list_cleanup(resol_list_t *list)
+void resolution_list_cleanup(resolution_list_t *list)
 {
-    free(list->resols);
+    free(list->resolutions);
 }
 
-void resol_list_add(resol_list_t *list, resol_t *resol)
+void resolution_list_add(resolution_list_t *list, resolution_t *resolution)
 {
     list->cnt++;
-    list->resols = realloc(list->resols, (list->cnt + 1) * sizeof(resol_t));
-    if (!list->resols)
+    list->resolutions = realloc(list->resolutions,
+                                (list->cnt + 1) * sizeof(resolution_t));
+    if (!list->resolutions)
     {
         err_capture(&err, SEV_FATAL, ZBAR_ERR_NOMEM,
             __func__, "allocating resources");
     }
-    list->resols[list->cnt - 1] = *resol;
-    memset(&list->resols[list->cnt], 0, sizeof(resol_t));
+    list->resolutions[list->cnt - 1] = *resolution;
+    memset(&list->resolutions[list->cnt], 0, sizeof(resolution_t));
 }
 
-void get_closest_resol(resol_t *resol, resol_list_t *list)
+void get_closest_resolution(resolution_t *resolution, resolution_list_t *list)
 {
-    resol_t *test_res;
+    resolution_t *test_res;
     long min_diff = 0;
-    long ind_best = -1; // the index of best resolution in resols
+    long idx_best = -1; // the index of best resolution in resolutions
     int i = 0;
-    for (test_res = list->resols; !struct_null(test_res); test_res++)
+    for (test_res = list->resolutions; !is_struct_null(test_res); test_res++)
     {
         long diff;
-        if (resol->cx)
+        if (resolution->cx)
         {
-            diff = test_res->cx - resol->cx;
+            diff = test_res->cx - resolution->cx;
             if (diff < 0)
                 diff = -diff;
         }
         else
         {
-            // empty resol, looking for the biggest
+            // empty resolution, looking for the biggest
             diff = -test_res->cx;
         }
-        if (ind_best < 0 || diff < min_diff)
+        if (idx_best < 0 || diff < min_diff)
         {
-            ind_best = i;
+            idx_best = i;
             min_diff = diff;
         }
         i++;
     }
     
-    if (ind_best >= 0)
+    if (idx_best >= 0)
     {
-        *resol = list->resols[ind_best];
+        *resolution = list->resolutions[idx_best];
     }
 }
 
-int struct_null_fun(const void *pdata, const int len)
+int is_struct_null_fun(const void *pdata, const int len)
     {
         int i;
         for (i = 0; i < len; i++)
