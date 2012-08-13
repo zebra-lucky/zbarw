@@ -1,0 +1,76 @@
+Why wine:
+---------
+In order to use directshow in zbar (i.e. compile, link) we need parts of the dshow sdk and the windows type system.
+Because mingw's header and idl files are rather sparse regarding windows and directshow we need alternatives.
+
+I considered the windows sdk and dshow sdk themselves as a candidate but microsoft copyright and warnings issued by gcc (when compiling unknown pragmas) led me to the decision not to use the microsoft code.
+More importantly, the midl-compiled directshow idl files include headers not present in the windows 7.0 sdk, so I had to comment things out, which is hacky at least.
+
+Wine offers a rich set of windows and dshow stuff, and a widl compiler (replacement for the midl compiler, which creates C code from idl files).
+Though it's not 100% complete, it serves well the purpose of implementing a zbar directshow driver.
+
+
+Notes:
+------
+The wine version in use is 1.4, the widl compiler comes from the windows binary package version 1.3.37.
+Wine can be downloaded from http://sourceforge.net/projects/wine/files/Source/, afterwards the patch file wine-1.4-zbar.patch has to be applied.
+
+Note that wine serves as a complete replacement for mingw/gcc header files concerning windows stuff. Hence, the whole 'include' and 'include/msvcrt' subdirectories from wine are used as an include path.
+
+wine offers several idl files that have to be compiled by widl into .h/.c files first. among them are the ones for directshow, especially strmif.idl, qedit.idl and some others like amvideo.idl and all their dependencies.
+The output of widl has been placed into its own directory which serves as an additional include path when compiling zbar.
+Only the idl files needed for using directshow in zbar have been compiled.
+
+directshow works a lot with GUIDs, but not all of them are declared/defined in wine, at least I didn't find them. Therefore some GUIDs are defined statically in zbar/video/dshow.c
+
+
+Changes that I've made to wine:
+-------------------------------
+
+wine-1.4\include\winnt.h
+* LONG is typedef'ed as long only on _MSC_VER because of 32/64 bit issues
+  -> always typedef as long (around line 395)
+
+wine-1.4\include\windef.h
+* DWORD and ULONG are typedef'ed as long only on _MSC_VER because of 32/64 bit issues
+  -> always typedef as long (around line 216)
+  
+wine-1.4\include\qedit.idl
+* add coclasses MediaDet, SampleGrabber, NullRenderer in library namespace DexterLib
+
+wine-1.4\include\qedit.idl
+* add [retval] idl attributes, turn IMediaPosition's functions into properties
+(note: not needed for zbar, but I've needed this for tests)
+
+wine-1.4\include\msvcrt\stdio.h
+* add snprintf
+
+wine-1.4\include\uuids.h
+* thx to Jarek Czekalski: remove OUR_GUID_ENTRY for CLSID_SampleGrabber and CLSID_NullRenderer because they're not contained in the Windows SDK's uuids.h
+
+
+zbar-specifics:
+---------------
+It is important to compile without winsock support (define WINE_NOWINSOCK in zbar/Makefile.am.inc), otherwise zbar code doesn't compile because of missing system types (TIME or FILE_TIME as far as I remember).
+
+Specify "wine-1.4-zbar/include", "wine-1.4-zbar/include/msvcrt" and "wine-1.4-zbar-dshow" as include directories to gcc.
+
+idl files to compile:
+; compile with: widl --win32 -h -u -I "wine-1.4-zbar\include"
+qedit.idl
+strmif.idl
+amvideo.idl
+amstream.idl
+austream.idl
+control.idl
+ddstream.idl
+mmstream.idl
+msxml.idl
+oaidl.idl
+objidl.idl
+ocidl.idl
+oleidl.idl
+propidl.idl
+unknwn.idl
+urlmon.idl
+wtypes.idl
