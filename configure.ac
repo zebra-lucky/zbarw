@@ -178,13 +178,12 @@ AC_ARG_ENABLE([video],
   [enable_video="yes"])
 
 dnl video, directshow
-with_directshow="no"
 AC_ARG_WITH([directshow],
   [AS_HELP_STRING([--with-directshow],
      [compile directshow driver on windows instead of vfw,
 available only when video support is enabled])],
-  [with_directshow="yes"],
-  [])
+  [],
+  [with_directshow="no"])
 
 have_v4l1="no"
 have_v4l2="no"
