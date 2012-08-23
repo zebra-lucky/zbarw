@@ -70,7 +70,7 @@ class Processor {
     /// see zbar_processor_init()
     /** @param enable_display Whether to prepare the window for displaying
       *        output. If `true`, this call should be followed by
-      *        `set_visible` to put the window into correct state.
+      *        `set_visible` to put the window into correct state. */
     void init (const char *video_device = "",
                bool enable_display = true)
     {
