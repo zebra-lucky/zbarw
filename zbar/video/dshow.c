@@ -183,11 +183,9 @@ static void flip_vert(zbar_image_t* const img, void* const srcBuf, int bpp)
 struct int_format_s
 {
     uint32_t fourcc;
-    /// compression in bih structure, may differ from one used by zbar
-    uint32_t biCompression;
-    WORD biBitCount;
-    GUID formattype;   ///< copied from AM_MEDIA_TYPE
-    GUID subtype;      ///< copied from AM_MEDIA_TYPE
+    /// index for IAMStreamConfig::GetStreamCaps
+    /// @note compression in bih structure may differ from one used by zbar
+    int idx_caps;
     resolution_list_t resolutions;
 };
 typedef struct int_format_s int_format_t; 
@@ -213,6 +211,7 @@ struct video_state_s
     IBaseFilter* nullrenderer;
     ICaptureGraphBuilder2* builder;
     IAMStreamConfig* camstreamconfig; /* dshow stream configuration interface */
+    int caps_size;                    /* length of stream config caps */
     /// 0 terminated list of supported internal formats.
     /** The size of this
       * array matches the size of {@link zbar_video_s#formats} array and
@@ -669,15 +668,18 @@ static int dshow_set_format (zbar_video_t* vdo,
     video_state_t* state = vdo->state;
     int_format_t *int_fmt = &state->int_formats[fmt_ind];
 
-    
-    // first, get current camera format
-    
-    AM_MEDIA_TYPE* currentmt = NULL;
-    HRESULT hr = IAMStreamConfig_GetFormat(state->camstreamconfig, &currentmt);
-    CHECK_COM_ERROR(hr, "queried currentmt", goto cleanup);
-    
-    assert(dshow_has_vih(currentmt));
-    BITMAPINFOHEADER* bih = dshow_access_bih(currentmt);
+
+    // prepare media type structure as read from GetStreamCaps
+    BYTE* caps = malloc(state->caps_size);
+    if (!caps) err_capture(vdo, SEV_FATAL, ZBAR_ERR_NOMEM, __func__, "");
+    AM_MEDIA_TYPE* mt = NULL;
+    AM_MEDIA_TYPE* currentmt = NULL;  // used later, but must be here
+                                      // due to possible "goto cleanup"
+    HRESULT hr = IAMStreamConfig_GetStreamCaps(state->camstreamconfig,
+        int_fmt->idx_caps, &mt, caps);
+    free(caps);
+    CHECK_COM_ERROR(hr, "querying chosen stream caps failed", goto cleanup)
+    BITMAPINFOHEADER* bih = dshow_access_bih(mt);
 
     
     // then, adjust the format
@@ -692,20 +694,12 @@ static int dshow_set_format (zbar_video_t* vdo,
     }
     bih->biWidth = vdo->width;
     bih->biHeight = vdo->height;
-    bih->biCompression = int_fmt->biCompression;
-    bih->biBitCount = int_fmt->biBitCount;
-    bih->biClrUsed = bih->biClrImportant = 0;
-    // must set fmt in subtype guid, because dshow doesn't consider the BMIH
-    currentmt->subtype = int_fmt->subtype;
 
     zprintf(4, "setting camera format: %.4s(%08x) " BIH_FMT "\n",
             (char*)&int_fmt->fourcc, int_fmt->fourcc, BIH_FIELDS(bih));
 
-    hr = IAMStreamConfig_SetFormat(state->camstreamconfig, currentmt);
+    hr = IAMStreamConfig_SetFormat(state->camstreamconfig, mt);
     CHECK_COM_ERROR(hr, "setting camera format failed", goto cleanup)
-
-    DeleteMediaType(currentmt);
-    currentmt = NULL;
 
     
     // re-read format, image data size might have changed
@@ -740,6 +734,7 @@ static int dshow_set_format (zbar_video_t* vdo,
             (char*)&int_fmt->fourcc, int_fmt->fourcc, BIH_FIELDS(bih));
 
 cleanup:
+    DeleteMediaType(mt);
     DeleteMediaType(currentmt);
 
     if (FAILED(hr))
@@ -950,8 +945,9 @@ static int dshow_determine_formats(zbar_video_t* vdo)
 
 
     // collect formats
-    int resolutions, caps_size;
-    HRESULT hr = IAMStreamConfig_GetNumberOfCapabilities(state->camstreamconfig, &resolutions, &caps_size);
+    int resolutions;
+    HRESULT hr = IAMStreamConfig_GetNumberOfCapabilities(
+        state->camstreamconfig, &resolutions, &state->caps_size);
     CHECK_COM_ERROR(hr, "couldn't query camera capabilities", return -1)
     
     zprintf(6, "number of formats/resolutions supported by the camera as reported by directshow: %d\n", resolutions);
@@ -962,7 +958,7 @@ static int dshow_determine_formats(zbar_video_t* vdo)
 
     // this is actually a VIDEO_STREAM_CONFIG_CAPS structure, which is mostly deprecated anyway,
     // so we just reserve enough buffer but treat it as opaque otherwise
-    BYTE* caps = malloc(caps_size);
+    BYTE* caps = malloc(state->caps_size);
     int n = 0, i;
     for (i = 0; i < resolutions; ++i)
     {
@@ -985,26 +981,23 @@ static int dshow_determine_formats(zbar_video_t* vdo)
             if (is_supported)
             {
                 // first search for existing fourcc format
-                int i;
-                for (i = 0; i < n; ++i)
+                int j;
+                for (j = 0; j < n; ++j)
                 {
                     if (state->int_formats[i].fourcc == fmt)
                         break;
                 }
                 // push back if not found
-                if (i == n)
+                if (j == n)
                 {
                     state->int_formats[n].fourcc = fmt;
-                    state->int_formats[n].biCompression = bih->biCompression;
-                    state->int_formats[n].biBitCount = bih->biBitCount;
-                    state->int_formats[n].formattype = mt->formattype;
-                    state->int_formats[n].subtype = mt->subtype;
+                    state->int_formats[n].idx_caps = i;
                     resolution_list_init(&state->int_formats[n].resolutions);
                     vdo->formats[n] = fmt;
                     ++n;
                 }
                 resolution_t resolution = { bih->biWidth, bih->biHeight };
-                resolution_list_add(&state->int_formats[i].resolutions,
+                resolution_list_add(&state->int_formats[j].resolutions,
                                     &resolution);
             }
         }
@@ -1049,53 +1042,40 @@ static int dshow_probe(zbar_video_t* vdo)
 
     // query current format
 
-    BITMAPINFOHEADER* state_bih = NULL;
-
     AM_MEDIA_TYPE* currentmt;
     HRESULT hr = IAMStreamConfig_GetFormat(state->camstreamconfig, &currentmt);
     CHECK_COM_ERROR(hr, "couldn't query current camera format", return -1)
     
-    // check for VIDEOINFOHEADER;
-    // note: other format types could be possible, e.g. VIDEOINFOHEADER2...
-    // which we don't support (the sample grabber doesn't as well)
     if (!dshow_has_vih(currentmt))
     {
-        LPOLESTR str = NULL;
-        hr = StringFromCLSID(&currentmt->formattype, &str);
-        CHECK_COM_ERROR(hr, "StringFromCLSID() failed", (void)0)
-        err_capture(vdo, SEV_ERROR, ZBAR_ERR_INVALID, __func__,
-                    "unsupported initial format (no VIDEOINFOHEADER)");
-        zwprintf(1, L"encountered unsupported initial format, no VIDEOINFOHEADER video format type: %s\n", 
-                 str);
-        CoTaskMemFree(str);
-        goto freemt;
+        char *formattype = get_clsid_string(&currentmt->formattype);
+        char *subtype = get_clsid_string(&currentmt->subtype);
+        zprintf(1, "encountered unsupported initial format, "
+                   "no VIDEOINFOHEADER video format type: %s / %s\n", 
+                formattype, subtype);
+        free(formattype);
+        free(subtype);
+
+        // if we cannot read the current resolution, we need sane defaults
+        vdo->state->def_resolution.cx = 640;
+        vdo->state->def_resolution.cy = 480;
     }
-
-    const BITMAPINFOHEADER* current_bih = dshow_caccess_bih(currentmt);
-
-    // scope: store bitmapinfoheader (initial format and size)
+    else
     {
+        const BITMAPINFOHEADER* current_bih = dshow_caccess_bih(currentmt);
+        assert(current_bih);
         zprintf(3, "initial format: %.4s(%08lx) " BIH_FMT "\n",
                (char*)&current_bih->biCompression, current_bih->biCompression, 
                 BIH_FIELDS(current_bih));
 
-        state->bi_size = current_bih->biSize;
-        state_bih = state->bih = realloc(state->bih, state->bi_size);
-        memcpy(state_bih, current_bih, state->bi_size);
+        // store initial size
+        vdo->state->def_resolution.cx = current_bih->biWidth;
+        vdo->state->def_resolution.cy = current_bih->biHeight;
     }
 
-freemt:
     DeleteMediaType(currentmt);
 
-    
-    // bail out if we couldn't get a meaningful bitmapinfoheader
-    if (!state_bih)
-        return -1;
 
-
-    vdo->state->def_resolution.cx = state_bih->biWidth;
-    vdo->state->def_resolution.cy = state_bih->biHeight;
-    vdo->datalen = state_bih->biSizeImage;
     vdo->intf = VIDEO_DSHOW;
     vdo->init = dshow_init;
     vdo->start = dshow_start;
