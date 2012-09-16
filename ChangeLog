@@ -1,3 +1,14 @@
+zbarw fixes:
+  * introduction of directshow video driver and subsequent fine tuning
+    of its behaviour, added support for RGB24 and MJPG cameras
+  * fixed spurious video freezes for vfw driver (dshow: 2012-06-11,
+    vfw: 2012-06-18, [tickets: #8])
+  * Windows 2000 (W2K) compatibility (2012-06-16)
+  * fixed premature ending of video thread, see zbar issue #3531359
+    (http://sourceforge.net/support/tracker.php?aid=3531359)
+    (2012-06-12, 3d5f211e9071)
+  * C++ API correction regarding return types and parameters (2012-06-08)
+  
 current:
   * Codabar reliability enhancements
     - fix missing check
