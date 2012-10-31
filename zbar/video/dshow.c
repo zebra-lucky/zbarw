@@ -332,7 +332,7 @@ static char* get_clsid_string(REFGUID guid)
     {
         if (IsEqualGUID(known_uuids[i].guid, guid))
         {
-            msg = malloc(strlen(known_uuids[i].name));
+            msg = malloc(strlen(known_uuids[i].name) + 1);
             strcpy(msg, known_uuids[i].name);
             break;
         }
