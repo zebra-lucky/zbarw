@@ -9,6 +9,10 @@ zbarw fixes:
     (2012-06-12, 3d5f211e9071)
   * C++ API correction regarding return types and parameters (2012-06-08)
   
+zbarw changelog:
+release 2012-10-31
+  * fixed memory corruption during processor initialization
+  
 current:
   * Codabar reliability enhancements
     - fix missing check
