@@ -11,7 +11,7 @@ developers, language bindings are included for C, C++, Python and Perl
 as well as GUI widgets for Qt, GTK and PyGTK.
 
 Check the ZBar home page for the latest release, mailing lists, etc.
-    http://zbar.sourceforge.net/
+    http://zbarw.sourceforge.net/
 
 License information can be found in 'COPYING'.
 
@@ -87,7 +87,7 @@ REPORTING BUGS
 ==============
 
 Bugs can be reported on the sourceforge project page
-    http://www.sourceforge.net/projects/zbar/
+    http://www.sourceforge.net/projects/zbarw/
 
 Please include the ZBar version number and a detailed description of
 the problem.  You'll probably have better luck if you're also familiar
