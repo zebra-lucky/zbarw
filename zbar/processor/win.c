@@ -135,12 +135,12 @@ static LRESULT CALLBACK win_handle_event (HWND hwnd,
                                           LPARAM lparam)
 {
     zbar_processor_t *proc =
-        (zbar_processor_t*)GetWindowLongPtr(hwnd, GWL_USERDATA);
+        (zbar_processor_t*)GetWindowLongPtr(hwnd, GWLP_USERDATA);
     /* initialized during window creation */
     if(message == WM_NCCREATE) {
         proc = ((LPCREATESTRUCT)lparam)->lpCreateParams;
         assert(proc);
-        SetWindowLongPtr(hwnd, GWL_USERDATA, (LONG_PTR)proc);
+        SetWindowLongPtr(hwnd, GWLP_USERDATA, (LONG_PTR)proc);
         proc->display = hwnd;
 
         zbar_window_attach(proc->window, proc->display, proc->xwin);
@@ -307,7 +307,7 @@ int _zbar_processor_open (zbar_processor_t *proc,
     proc->state->registeredClass = wca;
     RECT r = { 0, 0, width, height };
     AdjustWindowRectEx(&r, WIN_STYLE, 0, EXT_STYLE);
-    proc->display = CreateWindowEx(EXT_STYLE, (LPCTSTR)(long)wca,
+    proc->display = CreateWindowEx(EXT_STYLE, (LPCTSTR)(DWORD_PTR)wca,
                                    "ZBar", WIN_STYLE,
                                    CW_USEDEFAULT, CW_USEDEFAULT,
                                    r.right - r.left, r.bottom - r.top,
@@ -323,7 +323,7 @@ int _zbar_processor_close (zbar_processor_t *proc)
 {
     if(proc->display) {
         DestroyWindow(proc->display);
-        UnregisterClass((LPCTSTR)(long)proc->state->registeredClass, 0);
+        UnregisterClass((LPCTSTR)(DWORD_PTR)proc->state->registeredClass, 0);
         proc->display = NULL;
     }
     return(0);
