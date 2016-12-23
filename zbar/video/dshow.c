@@ -22,34 +22,42 @@
  *  http://sourceforge.net/projects/zbarw
  *------------------------------------------------------------------------*/
 
-#include "video.h"
-#include "thread.h"
-#include "misc.h"
+#include <assert.h>
+#ifdef _MSC_VER
+# include <targetver.h>
+# include <Windows.h>
+#endif
 #include <objbase.h>
 #include <strmif.h>
 #include <control.h>
 #include <qedit.h>
 #include <amvideo.h>    // include after ddraw.h has been included from any dshow header
-#include <assert.h>
+#include "video.h"
+#include "thread.h"
+#include "misc.h"
+
 
 #define ZBAR_DEFINE_STATIC_GUID(name, l, w1, w2, b1, b2, b3, b4, b5, b6, b7, b8) \
-        static const GUID DECLSPEC_SELECTANY name \
+        static const GUID name \
                 = { l, w1, w2, { b1, b2,  b3,  b4,  b5,  b6,  b7,  b8 } }
 
+#ifndef _MSC_VER
 // this one is not in uuids.h yet
 // {301056D0-6DFF-11d2-9EEB-006008039E37}
 ZBAR_DEFINE_STATIC_GUID(CLSID_MjpegDec,
 0x301056d0, 0x6dff, 0x11d2, 0x9e, 0xeb, 0x0, 0x60, 0x8, 0x3, 0x9e, 0x37);
+#endif
+
+// define for uuids.h inclusion
+# define OUR_GUID_ENTRY(name, l, w1, w2, b1, b2, b3, b4, b5, b6, b7, b8) \
+    ZBAR_DEFINE_STATIC_GUID(name, l, w1, w2, b1, b2, b3, b4, b5, b6, b7, b8);
+
+#include <uuids.h>
 
 // define a special guid that can be used for fourcc formats
 // 00000000-0000-0010-8000-00AA00389B71   == MEDIASUBTYPE_FOURCC_PLACEHOLDER
 ZBAR_DEFINE_STATIC_GUID(MEDIASUBTYPE_FOURCC_PLACEHOLDER,
 0x00000000, 0x0000, 0x0010, 0x80, 0x00, 0x00, 0xaa, 0x00, 0x38, 0x9b, 0x71);
-
-#define OUR_GUID_ENTRY(name, l, w1, w2, b1, b2, b3, b4, b5, b6, b7, b8) \
-    ZBAR_DEFINE_STATIC_GUID(name, l, w1, w2, b1, b2, b3, b4, b5, b6, b7, b8);
-
-#include <uuids.h>
 
 #define BIH_FMT "%ldx%ld @%dbpp (%lx) cmp=%.4s(%08lx) res=%ldx%ld clr=%ld/%ld (%lx)"
 #define BIH_FIELDS(bih)                                                 \
@@ -94,7 +102,7 @@ static const struct uuid_desc_s {
 static const REFERENCE_TIME _100ns_unit = 1*1000*1000*1000 / 100;
 
 // format to which we convert MJPG streams
-static const REFGUID mjpg_conversion_mediatype = &MEDIASUBTYPE_RGB32;
+static REFGUID mjpg_conversion_mediatype = &MEDIASUBTYPE_RGB32;
 static const int mjpg_conversion_fmt = fourcc('B','G','R','4');
 static const int mjpg_conversion_fmt_bpp = 32;
 
@@ -163,13 +171,13 @@ static inline const BITMAPINFOHEADER* dshow_caccess_bih(const AM_MEDIA_TYPE* mt)
 
 /// Flips the image vertically copying it from srcBuf to img.
 /** @param bpp Bits Per Pixel */
-static void flip_vert(zbar_image_t* const img, void* const srcBuf, int bpp)
+static void flip_vert(zbar_image_t* img, char* srcBuf, int bpp)
 {
     // The formula below works only if bpp%8==0
     long bytesPerLine = 1L * img->width * bpp / 8;
     assert(img->datalen >= img->height * bytesPerLine);
-    void *dst = (void*)img->data;
-    void *src = srcBuf + (img->height - 1) * bytesPerLine;
+    char* dst = (void*)img->data;
+    char* src = srcBuf + (img->height - 1) * bytesPerLine;
     int i, n;
     for (i=0, n = img->height; i < n; i++) {
         memcpy(dst, src, bytesPerLine);
@@ -795,7 +803,7 @@ static int dshow_init(zbar_video_t* vdo, uint32_t fmt)
         // (BGR4 [zbar input] -> MJPG [camera output]).
         // Because zbar requests BGR4 we have to ensure that we really do 
         // provide it.
-        AM_MEDIA_TYPE conv_mt = {};
+        AM_MEDIA_TYPE conv_mt = { 0, 0, 0, 0, 0, 0, 0, 0, 0 };
         conv_mt.majortype = MEDIATYPE_Video;
         conv_mt.subtype = *mjpg_conversion_mediatype;
         conv_mt.formattype = FORMAT_VideoInfo;
@@ -823,7 +831,7 @@ mjpg_cleanup:
     {
         // ensure (again) that the sample grabber gets only 
         // video media types with VIDEOINFOHEADER
-        AM_MEDIA_TYPE grab_mt = {};
+        AM_MEDIA_TYPE grab_mt = { 0, 0, 0, 0, 0, 0, 0, 0, 0 };
         grab_mt.majortype = MEDIATYPE_Video;
         grab_mt.formattype = FORMAT_VideoInfo;
         hr = ISampleGrabber_SetMediaType(state->samplegrabber, &grab_mt);
@@ -845,7 +853,7 @@ render_cleanup:
     // scope: after the graph is built (and the pins connected) we query the
     // final media type from sample grabber's input pin;
     {
-        AM_MEDIA_TYPE input_mt = {};
+        AM_MEDIA_TYPE input_mt = { 0, 0, 0, 0, 0, 0, 0, 0, 0 };
 
         hr = ISampleGrabber_GetConnectedMediaType(state->samplegrabber, &input_mt);
         CHECK_COM_ERROR(hr, "couldn't query input media type from sample grabber", goto cleanup1)

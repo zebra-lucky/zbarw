@@ -38,7 +38,7 @@
 #include <zbar.h>
 
 #ifdef _WIN32
-# include <windows.h>
+# include <Windows.h>
 #endif
 
 #if __STDC_VERSION__ < 199901L

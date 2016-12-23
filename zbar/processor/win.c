@@ -22,8 +22,8 @@
  *------------------------------------------------------------------------*/
 
 #include "processor.h"
-#include <windows.h>
 #include <assert.h>
+#include <Windows.h>
 
 #define WIN_STYLE (WS_CAPTION | \
                    WS_SYSMENU | \
@@ -89,7 +89,7 @@ int _zbar_event_wait (zbar_event_t *event,
 }
 
 int _zbar_thread_start (zbar_thread_t *thr,
-                        zbar_thread_proc_t *proc,
+                        zbar_thread_proc_t proc,
                         void *arg,
                         zbar_mutex_t *lock)
 {

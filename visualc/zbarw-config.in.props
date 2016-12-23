@@ -1,0 +1,80 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ImportGroup Label="PropertySheets" />
+  <PropertyGroup Label="UserMacros">
+    <!--whether to build the library such that it can be executed on Win XP-->
+    <WITH_XP_SUPPORT>false</WITH_XP_SUPPORT>
+    <!--whether to build w/o video at all-->
+    <DISABLE_VIDEO>false</DISABLE_VIDEO>
+    <!--whether to build with support for directshow instead of VFW-->
+    <WITH_DIRECTSHOW>true</WITH_DIRECTSHOW>
+    <!--whether to build support for Code 128 symbology-->
+    <ENABLE_CODE128>true</ENABLE_CODE128>
+    <!--whether to build support for Code 93 symbology-->
+    <ENABLE_CODE93>true</ENABLE_CODE93>
+    <!--whether to build support for Code 39 symbology-->
+    <ENABLE_CODE39>true</ENABLE_CODE39>
+    <!--whether to build support for Codabar symbology-->
+    <ENABLE_CODABAR>true</ENABLE_CODABAR>
+    <!--whether to build support for DataBar symbology-->
+    <ENABLE_DATABAR>true</ENABLE_DATABAR>
+    <!--whether to build support for EAN symbology-->
+    <ENABLE_EAN>true</ENABLE_EAN>
+    <!--whether to build support for Interleaved 2 of 5 symbology-->
+    <ENABLE_I25>true</ENABLE_I25>
+    <!--whether to build support for PDF417 symbology-->
+    <ENABLE_PDF417>true</ENABLE_PDF417>
+    <!--whether to build support for QR Code-->
+    <ENABLE_QRCODE>false</ENABLE_QRCODE>
+  </PropertyGroup>
+  <PropertyGroup />
+  <ItemDefinitionGroup />
+  <ItemDefinitionGroup Condition="!$(Configuration.Contains('Debug'))">
+    <ClCompile>
+      <RuntimeLibrary>MultiThreaded</RuntimeLibrary>
+    </ClCompile>
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(UseDebugLibraries)' == 'true'">
+    <ClCompile>
+      <RuntimeLibrary>MultiThreadedDebug</RuntimeLibrary>
+    </ClCompile>
+  </ItemDefinitionGroup>
+  <ItemGroup>
+    <BuildMacro Include="WITH_XP_SUPPORT">
+      <Value>$(WITH_XP_SUPPORT)</Value>
+    </BuildMacro>
+    <BuildMacro Include="DISABLE_VIDEO">
+      <Value>$(DISABLE_VIDEO)</Value>
+    </BuildMacro>
+    <BuildMacro Include="WITH_DIRECTSHOW">
+      <Value>$(WITH_DIRECTSHOW)</Value>
+    </BuildMacro>
+    <BuildMacro Include="ENABLE_CODE128">
+      <Value>$(ENABLE_CODE128)</Value>
+    </BuildMacro>
+    <BuildMacro Include="ENABLE_CODE93">
+      <Value>$(ENABLE_CODE93)</Value>
+    </BuildMacro>
+    <BuildMacro Include="ENABLE_CODE39">
+      <Value>$(ENABLE_CODE39)</Value>
+    </BuildMacro>
+    <BuildMacro Include="ENABLE_CODABAR">
+      <Value>$(ENABLE_CODABAR)</Value>
+    </BuildMacro>
+    <BuildMacro Include="ENABLE_DATABAR">
+      <Value>$(ENABLE_DATABAR)</Value>
+    </BuildMacro>
+    <BuildMacro Include="ENABLE_EAN">
+      <Value>$(ENABLE_EAN)</Value>
+    </BuildMacro>
+    <BuildMacro Include="ENABLE_I25">
+      <Value>$(ENABLE_I25)</Value>
+    </BuildMacro>
+    <BuildMacro Include="ENABLE_PDF417">
+      <Value>$(ENABLE_PDF417)</Value>
+    </BuildMacro>
+    <BuildMacro Include="ENABLE_QRCODE">
+      <Value>$(ENABLE_QRCODE)</Value>
+    </BuildMacro>
+  </ItemGroup>
+</Project>

@@ -30,9 +30,12 @@
 
 #if defined(_WIN32)
 
-# include <windows.h>
+# include <Windows.h>
 
+#ifdef _DEBUG
 # define DEBUG_LOCKS
+#endif
+
 # ifdef DEBUG_LOCKS
 
 typedef struct zbar_mutex_s {

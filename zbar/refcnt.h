@@ -27,7 +27,7 @@
 #include <assert.h>
 
 #if defined(_WIN32)
-# include <windows.h>
+# include <Windows.h>
 
 typedef LONG refcnt_t;
 

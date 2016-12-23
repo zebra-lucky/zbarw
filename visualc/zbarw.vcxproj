@@ -1,0 +1,263 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project DefaultTargets="Build" ToolsVersion="14.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup Label="ProjectConfigurations">
+    <ProjectConfiguration Include="Debug|Win32">
+      <Configuration>Debug</Configuration>
+      <Platform>Win32</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="Release|Win32">
+      <Configuration>Release</Configuration>
+      <Platform>Win32</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="Debug|x64">
+      <Configuration>Debug</Configuration>
+      <Platform>x64</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="Release|x64">
+      <Configuration>Release</Configuration>
+      <Platform>x64</Platform>
+    </ProjectConfiguration>
+  </ItemGroup>
+  <PropertyGroup Label="Globals">
+    <ProjectGuid>{339539F5-B65C-4671-A42E-64CAAAAEAF42}</ProjectGuid>
+    <Keyword>Win32Proj</Keyword>
+    <RootNamespace>zbarw</RootNamespace>
+    <ProjectName>zbar</ProjectName>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
+  <PropertyGroup Condition="'$(Configuration)'=='Debug'" Label="Configuration">
+    <ConfigurationType>DynamicLibrary</ConfigurationType>
+    <UseDebugLibraries>true</UseDebugLibraries>
+    <CharacterSet>MultiByte</CharacterSet>
+    <PlatformToolset>v140</PlatformToolset>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)'=='Release'" Label="Configuration">
+    <ConfigurationType>DynamicLibrary</ConfigurationType>
+    <UseDebugLibraries>false</UseDebugLibraries>
+    <CharacterSet>MultiByte</CharacterSet>
+    <PlatformToolset>v140</PlatformToolset>
+    <WholeProgramOptimization>true</WholeProgramOptimization>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
+  <ImportGroup Label="ExtensionSettings">
+  </ImportGroup>
+  <ImportGroup Label="Shared">
+  </ImportGroup>
+  <ImportGroup Label="PropertySheets" Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+    <Import Project="zbarw.props" />
+  </ImportGroup>
+  <ImportGroup Label="PropertySheets" Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+    <Import Project="zbarw.props" />
+  </ImportGroup>
+  <ImportGroup Label="PropertySheets" Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+    <Import Project="zbarw.props" />
+  </ImportGroup>
+  <ImportGroup Label="PropertySheets" Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+    <Import Project="zbarw.props" />
+  </ImportGroup>
+  <PropertyGroup Label="UserMacros" />
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'" />
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'" />
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'" />
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'" />
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'" />
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
+    <ClCompile />
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
+    <ClCompile />
+    <ClCompile />
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'" />
+  <ItemGroup>
+    <ClInclude Include="..\include\zbar.h" />
+    <ClInclude Include="..\zbar\debug.h" />
+    <ClInclude Include="..\zbar\decoder.h" />
+    <ClInclude Include="..\zbar\decoder\codabar.h" />
+    <ClInclude Include="..\zbar\decoder\code128.h" />
+    <ClInclude Include="..\zbar\decoder\code39.h" />
+    <ClInclude Include="..\zbar\decoder\code93.h" />
+    <ClInclude Include="..\zbar\decoder\databar.h" />
+    <ClInclude Include="..\zbar\decoder\ean.h" />
+    <ClInclude Include="..\zbar\decoder\i25.h" />
+    <ClInclude Include="..\zbar\decoder\pdf417.h" />
+    <ClInclude Include="..\zbar\decoder\pdf417_hash.h" />
+    <ClInclude Include="..\zbar\decoder\qr_finder.h" />
+    <ClInclude Include="..\zbar\error.h" />
+    <ClInclude Include="..\zbar\event.h" />
+    <ClInclude Include="..\zbar\image.h" />
+    <ClInclude Include="..\zbar\img_scanner.h" />
+    <ClInclude Include="..\zbar\misc.h" />
+    <ClInclude Include="..\zbar\mutex.h" />
+    <ClInclude Include="..\zbar\processor.h" />
+    <ClInclude Include="..\zbar\processor\posix.h" />
+    <ClInclude Include="..\zbar\qrcode.h" />
+    <ClInclude Include="..\zbar\qrcode\bch15_5.h" />
+    <ClInclude Include="..\zbar\qrcode\binarize.h" />
+    <ClInclude Include="..\zbar\qrcode\isaac.h" />
+    <ClInclude Include="..\zbar\qrcode\qrdec.h" />
+    <ClInclude Include="..\zbar\qrcode\rs.h" />
+    <ClInclude Include="..\zbar\qrcode\util.h" />
+    <ClInclude Include="..\zbar\refcnt.h" />
+    <ClInclude Include="..\zbar\svg.h" />
+    <ClInclude Include="..\zbar\symbol.h" />
+    <ClInclude Include="..\zbar\thread.h" />
+    <ClInclude Include="..\zbar\timer.h" />
+    <ClInclude Include="..\zbar\video.h" />
+    <ClInclude Include="..\zbar\window.h" />
+    <ClInclude Include="..\zbar\window\win.h" />
+    <ClInclude Include="..\zbar\window\x.h" />
+    <ClInclude Include="config.h" />
+    <ClInclude Include="stdafx.h" />
+    <ClInclude Include="targetver.h" />
+  </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="..\zbar\config.c" />
+    <ClCompile Include="..\zbar\convert.c" />
+    <ClCompile Include="..\zbar\decoder.c" />
+    <ClCompile Include="..\zbar\decoder\codabar.c">
+      <ExcludedFromBuild Condition="'$(ENABLE_CODABAR)'=='false'">true</ExcludedFromBuild>
+    </ClCompile>
+    <ClCompile Include="..\zbar\decoder\code128.c">
+      <ExcludedFromBuild Condition="'$(ENABLE_CODE128)'=='false'">true</ExcludedFromBuild>
+    </ClCompile>
+    <ClCompile Include="..\zbar\decoder\code39.c">
+      <ExcludedFromBuild Condition="'$(ENABLE_CODE39)'=='false'">true</ExcludedFromBuild>
+    </ClCompile>
+    <ClCompile Include="..\zbar\decoder\code93.c">
+      <ExcludedFromBuild Condition="'$(ENABLE_CODE93)'=='false'">true</ExcludedFromBuild>
+    </ClCompile>
+    <ClCompile Include="..\zbar\decoder\databar.c">
+      <ExcludedFromBuild Condition="'$(ENABLE_DATABAR)'=='false'">true</ExcludedFromBuild>
+    </ClCompile>
+    <ClCompile Include="..\zbar\decoder\ean.c">
+      <ExcludedFromBuild Condition="'$(ENABLE_EAN)'=='false'">true</ExcludedFromBuild>
+    </ClCompile>
+    <ClCompile Include="..\zbar\decoder\i25.c">
+      <ExcludedFromBuild Condition="'$(ENABLE_I25)'=='false'">true</ExcludedFromBuild>
+    </ClCompile>
+    <ClCompile Include="..\zbar\decoder\pdf417.c">
+      <ExcludedFromBuild Condition="'$(ENABLE_PDF417)'=='false'">true</ExcludedFromBuild>
+    </ClCompile>
+    <ClCompile Include="..\zbar\decoder\qr_finder.c">
+      <ExcludedFromBuild Condition="'$(ENABLE_QRCODE)'=='false'">true</ExcludedFromBuild>
+    </ClCompile>
+    <ClCompile Include="..\zbar\error.c" />
+    <ClCompile Include="..\zbar\image.c" />
+    <ClCompile Include="..\zbar\img_scanner.c" />
+    <ClCompile Include="..\zbar\jpeg.c">
+      <ExcludedFromBuild Condition="True">true</ExcludedFromBuild>
+    </ClCompile>
+    <ClCompile Include="..\zbar\misc.c" />
+    <ClCompile Include="..\zbar\processor.c" />
+    <ClCompile Include="..\zbar\processor\lock.c" />
+    <ClCompile Include="..\zbar\processor\null.c">
+      <ExcludedFromBuild>true</ExcludedFromBuild>
+    </ClCompile>
+    <ClCompile Include="..\zbar\processor\posix.c">
+      <ExcludedFromBuild Condition="True">true</ExcludedFromBuild>
+    </ClCompile>
+    <ClCompile Include="..\zbar\processor\win.c" />
+    <ClCompile Include="..\zbar\processor\x.c">
+      <ExcludedFromBuild Condition="True">true</ExcludedFromBuild>
+    </ClCompile>
+    <ClCompile Include="..\zbar\qrcode\bch15_5.c">
+      <ExcludedFromBuild Condition="'$(ENABLE_QRCODE)'=='false'">true</ExcludedFromBuild>
+    </ClCompile>
+    <ClCompile Include="..\zbar\qrcode\binarize.c">
+      <ExcludedFromBuild Condition="'$(ENABLE_QRCODE)'=='false'">true</ExcludedFromBuild>
+    </ClCompile>
+    <ClCompile Include="..\zbar\qrcode\isaac.c">
+      <ExcludedFromBuild Condition="'$(ENABLE_QRCODE)'=='false'">true</ExcludedFromBuild>
+    </ClCompile>
+    <ClCompile Include="..\zbar\qrcode\qrdec.c">
+      <ExcludedFromBuild Condition="'$(ENABLE_QRCODE)'=='false'">true</ExcludedFromBuild>
+    </ClCompile>
+    <ClCompile Include="..\zbar\qrcode\qrdectxt.c">
+      <ExcludedFromBuild Condition="'$(ENABLE_QRCODE)'=='false'">true</ExcludedFromBuild>
+    </ClCompile>
+    <ClCompile Include="..\zbar\qrcode\rs.c">
+      <ExcludedFromBuild Condition="'$(ENABLE_QRCODE)'=='false'">true</ExcludedFromBuild>
+    </ClCompile>
+    <ClCompile Include="..\zbar\qrcode\util.c">
+      <ExcludedFromBuild Condition="'$(ENABLE_QRCODE)'=='false'">true</ExcludedFromBuild>
+    </ClCompile>
+    <ClCompile Include="..\zbar\refcnt.c" />
+    <ClCompile Include="..\zbar\scanner.c" />
+    <ClCompile Include="..\zbar\svg.c">
+      <ExcludedFromBuild Condition="True">true</ExcludedFromBuild>
+    </ClCompile>
+    <ClCompile Include="..\zbar\symbol.c" />
+    <ClCompile Include="..\zbar\video.c" />
+    <ClCompile Include="..\zbar\video\dshow.c">
+      <ExcludedFromBuild Condition="'$(DISABLE_VIDEO)'=='true' Or '$(WITH_DIRECTSHOW)'=='false'">true</ExcludedFromBuild>
+    </ClCompile>
+    <ClCompile Include="..\zbar\video\null.c">
+      <ExcludedFromBuild Condition="'$(DISABLE_VIDEO)'!='true'">true</ExcludedFromBuild>
+    </ClCompile>
+    <ClCompile Include="..\zbar\video\v4l.c">
+      <ExcludedFromBuild Condition="True">true</ExcludedFromBuild>
+    </ClCompile>
+    <ClCompile Include="..\zbar\video\v4l1.c">
+      <ExcludedFromBuild Condition="True">true</ExcludedFromBuild>
+    </ClCompile>
+    <ClCompile Include="..\zbar\video\v4l2.c">
+      <ExcludedFromBuild Condition="True">true</ExcludedFromBuild>
+    </ClCompile>
+    <ClCompile Include="..\zbar\video\vfw.c">
+      <ExcludedFromBuild Condition="'$(DISABLE_VIDEO)'=='true' Or '$(WITH_DIRECTSHOW)'!='false'">true</ExcludedFromBuild>
+    </ClCompile>
+    <ClCompile Include="..\zbar\window.c" />
+    <ClCompile Include="..\zbar\window\dib.c" />
+    <ClCompile Include="..\zbar\window\null.c">
+      <ExcludedFromBuild>true</ExcludedFromBuild>
+    </ClCompile>
+    <ClCompile Include="..\zbar\window\vfw.c">
+      <!--deprecated-->
+      <ExcludedFromBuild>true</ExcludedFromBuild>
+    </ClCompile>
+    <ClCompile Include="..\zbar\window\win.c" />
+    <ClCompile Include="..\zbar\window\x.c">
+      <ExcludedFromBuild Condition="True">true</ExcludedFromBuild>
+    </ClCompile>
+    <ClCompile Include="..\zbar\window\ximage.c">
+      <ExcludedFromBuild Condition="True">true</ExcludedFromBuild>
+    </ClCompile>
+    <ClCompile Include="..\zbar\window\xv.c">
+      <ExcludedFromBuild Condition="True">true</ExcludedFromBuild>
+    </ClCompile>
+    <ClCompile Include="stdafx.c">
+      <ExcludedFromBuild Condition="'%(ClCompile.PrecompiledHeader)'!='Use'">true</ExcludedFromBuild>
+      <PrecompiledHeader>Create</PrecompiledHeader>
+    </ClCompile>
+  </ItemGroup>
+  <ItemGroup>
+    <ResourceCompile Include="..\zbar\libzbar-rc.rc" />
+  </ItemGroup>
+  <ItemGroup>
+    <Midl Include="qedit.idl">
+      <HeaderFileName>%(Filename).h</HeaderFileName>
+      <GenerateTypeLibrary>false</GenerateTypeLibrary>
+      <GenerateClientFiles>None</GenerateClientFiles>
+      <GenerateServerFiles>None</GenerateServerFiles>
+      <OutputDirectory>$(ProjectDir)$(IntDir)</OutputDirectory>
+    </Midl>
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="zbarw.def">
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">true</ExcludedFromBuild>
+    </None>
+  </ItemGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
+  <ImportGroup Label="ExtensionTargets">
+  </ImportGroup>
+  <ProjectExtensions>
+    <VisualStudio>
+      <UserProperties />
+    </VisualStudio>
+  </ProjectExtensions>
+</Project>

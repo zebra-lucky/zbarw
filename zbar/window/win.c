@@ -25,6 +25,9 @@
 #include "image.h"
 #include "win.h"
 #include <ctype.h>
+#ifdef _MSC_VER
+# include <malloc.h>
+#endif
 
 int _zbar_window_vfw_init(zbar_window_t *w);
 int _zbar_window_dib_init(zbar_window_t *w);
@@ -194,7 +197,11 @@ int _zbar_window_draw_polygon (zbar_window_t *w,
     win_set_rgb(hdc, rgb);
 
     point_t org = w->scaled_offset;
+#ifdef _MSC_VER
+    POINT* gdipts = (POINT*)_malloca(sizeof(char) * (npts + 1));
+#else
     POINT gdipts[npts + 1];
+#endif
     int i;
     for(i = 0; i < npts; i++) {
         point_t p = window_scale_pt(w, pts[i]);

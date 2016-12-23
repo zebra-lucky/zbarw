@@ -31,11 +31,11 @@
 
 #if defined(_WIN32)
 
-# include <windows.h>
+# include <Windows.h>
 # define HAVE_THREADS
 # define ZTHREAD DWORD WINAPI
 
-typedef ZTHREAD (zbar_thread_proc_t)(void*);
+typedef DWORD(WINAPI* zbar_thread_proc_t)(void*);
 
 typedef DWORD zbar_thread_id_t;
 
@@ -46,7 +46,7 @@ typedef DWORD zbar_thread_id_t;
 # define HAVE_THREADS
 # define ZTHREAD void*
 
-typedef ZTHREAD (zbar_thread_proc_t)(void*);
+typedef ZTHREAD (*zbar_thread_proc_t)(void*);
 
 typedef pthread_t zbar_thread_id_t;
 
@@ -55,7 +55,7 @@ typedef pthread_t zbar_thread_id_t;
 # undef HAVE_THREADS
 # undef ZTHREAD
 
-typedef void zbar_thread_proc_t;
+typedef void* zbar_thread_proc_t;
 typedef int zbar_thread_id_t;
 
 #endif
@@ -119,7 +119,7 @@ static inline int _zbar_thread_is_self (zbar_thread_id_t tid)
 #endif
 
 #ifdef HAVE_THREADS
-extern int _zbar_thread_start(zbar_thread_t*, zbar_thread_proc_t*,
+extern int _zbar_thread_start(zbar_thread_t*, zbar_thread_proc_t,
                               void*, zbar_mutex_t*);
 extern int _zbar_thread_stop(zbar_thread_t*, zbar_mutex_t*);
 #endif

@@ -31,7 +31,7 @@ autom4te.cache
 missing
 python/MANIFEST
 zbar*.pc
-build
+build/
 _nsis
 *.xcodeproj/*.mode1v3
 *.xcodeproj/*.pbxuser
@@ -52,3 +52,10 @@ android/examples/*/libs
 android/*.zip
 android/local.properties
 android/examples/*/local.properties
+*.aps
+visualc/zbarw-config.props
+visualc/*.VC.db
+visualc/*.VC.VC.opendb
+visualc/im-build/
+visualc/.vs/
+visualc/ipch/

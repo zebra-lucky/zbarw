@@ -22,16 +22,17 @@
  *------------------------------------------------------------------------*/
 
 #include "window.h"
-#include <vfw.h>
+#include "win.h"
+#include <Vfw.h>
 
 extern int _zbar_window_bih_init(zbar_window_t *w,
                                  zbar_image_t *img);
 
 static int vfw_cleanup (zbar_window_t *w)
 {
-    if(w->hdd) {
-        DrawDibClose(w->hdd);
-        w->hdd = NULL;
+    if(w->state->hdd) {
+        DrawDibClose(w->state->hdd);
+        w->state->hdd = NULL;
     }
     return(0);
 }
@@ -43,15 +44,15 @@ static int vfw_init (zbar_window_t *w,
     if(new_format)
         _zbar_window_bih_init(w, img);
 
-    w->dst_width = w->bih.biWidth = (img->width + 3) & ~3;
-    w->dst_height = w->bih.biHeight = img->height;
+    w->dst_width = w->state->bih.biWidth = (img->width + 3) & ~3;
+    w->dst_height = w->state->bih->biHeight = img->height;
 
     HDC hdc = GetDC(w->hwnd);
     if(!hdc)
         return(-1/*FIXME*/);
 
     if(!DrawDibBegin(w->hdd, hdc, w->width, w->height,
-                     &w->bih, img->width, img->height, 0))
+                     &w->state->bih, img->width, img->height, 0))
         return(-1/*FIXME*/);
 
     ReleaseDC(w->hwnd, hdc);
@@ -68,9 +69,9 @@ static int vfw_draw (zbar_window_t *w,
     zprintf(24, "DrawDibDraw(%dx%d -> %dx%d)\n",
             img->width, img->height, w->width, w->height);
 
-    DrawDibDraw(w->hdd, hdc,
+    DrawDibDraw(w->state->hdd, hdc,
                 0, 0, w->width, w->height,
-                &w->bih, (void*)img->data,
+                &w->state->bih, (void*)img->data,
                 0, 0, w->src_width, w->src_height,
                 DDF_SAME_DRAW);
 
@@ -88,8 +89,8 @@ static uint32_t vfw_formats[] = {
 
 int _zbar_window_vfw_init (zbar_window_t *w)
 {
-    w->hdd = DrawDibOpen();
-    if(!w->hdd)
+    w->state->hdd = DrawDibOpen();
+    if(!w->state->hdd)
         return(err_capture(w, SEV_ERROR, ZBAR_ERR_UNSUPPORTED, __func__,
                            "unable to initialize DrawDib"));
 

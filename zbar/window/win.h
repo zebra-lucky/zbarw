@@ -23,7 +23,7 @@
 #ifndef _WINDOW_WIN_H_
 #define _WINDOW_WIN_H_
 
-#include <windows.h>
+#include <Windows.h>
 
 struct window_state_s {
     HDC hdc;

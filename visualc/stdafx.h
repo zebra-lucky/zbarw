@@ -1,0 +1,10 @@
+#pragma once
+#include "targetver.h"
+#include <inttypes.h>
+#include <string.h>
+#include <stdlib.h>
+#include <assert.h>
+#include <math.h>
+#include <time.h>
+#include <Windows.h>
+#include <zbar.h>

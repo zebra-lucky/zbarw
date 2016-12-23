@@ -21,11 +21,10 @@
  *  http://sourceforge.net/projects/zbar
  *------------------------------------------------------------------------*/
 
+#include <Vfw.h>
+#include <assert.h>
 #include "video.h"
 #include "thread.h"
-#include <vfw.h>
-
-#include <assert.h>
 
 #define MAX_DRIVERS 10
 #define MAX_NAME 128
