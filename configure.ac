@@ -47,7 +47,7 @@ AC_DEFINE_UNQUOTED([LIB_VERSION_REVISION],
   [Library revision])
 
 AM_CPPFLAGS="-I$srcdir/include"
-AM_CFLAGS="-Wall -Wno-parentheses -Werror -Wno-incompatible-pointer-types"
+AM_CFLAGS="-Wall -Wno-parentheses -Werror -Wno-incompatible-pointer-types -Wno-pointer-to-int-cast -Wno-int-to-pointer-cast"
 AM_CXXFLAGS="$AM_CFLAGS"
 AC_SUBST([AM_CPPFLAGS])
 AC_SUBST([AM_CFLAGS])

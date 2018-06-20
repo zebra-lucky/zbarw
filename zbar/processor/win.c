@@ -23,6 +23,7 @@
 
 #include "processor.h"
 #include <windows.h>
+#include <winuser.h>
 #include <assert.h>
 
 #define WIN_STYLE (WS_CAPTION | \
@@ -44,6 +45,12 @@
 // http://my.opera.com/Tringi/blog/getcurrentmodulehandle
 #if WINVER < 0x0501 /* less than XP */
 extern IMAGE_DOS_HEADER __ImageBase;
+#endif
+
+#ifdef _WIN64
+#define ZBAR_GWL_USERDATA GWLP_USERDATA
+#else
+#define ZBAR_GWL_USERDATA GWL_USERDATA
 #endif
 
 struct processor_state_s {
@@ -135,12 +142,12 @@ static LRESULT CALLBACK win_handle_event (HWND hwnd,
                                           LPARAM lparam)
 {
     zbar_processor_t *proc =
-        (zbar_processor_t*)GetWindowLongPtr(hwnd, GWL_USERDATA);
+        (zbar_processor_t*)GetWindowLongPtr(hwnd, ZBAR_GWL_USERDATA);
     /* initialized during window creation */
     if(message == WM_NCCREATE) {
         proc = ((LPCREATESTRUCT)lparam)->lpCreateParams;
         assert(proc);
-        SetWindowLongPtr(hwnd, GWL_USERDATA, (LONG_PTR)proc);
+        SetWindowLongPtr(hwnd, ZBAR_GWL_USERDATA, (LONG_PTR)proc);
         proc->display = hwnd;
 
         zbar_window_attach(proc->window, proc->display, proc->xwin);
