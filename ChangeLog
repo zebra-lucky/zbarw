@@ -10,6 +10,10 @@ zbarw fixes:
   * C++ API correction regarding return types and parameters (2012-06-08)
   
 zbarw changelog:
+release 2018-06-20:
+  * build with mingw-w64 on debian buster (i686, x86_64)
+  * changes to code to pass build, remove wine_gen/
+
 release 2012-10-31
   * fixed memory corruption during processor initialization
   
