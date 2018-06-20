@@ -1,0 +1,30 @@
+sudo: required
+language: python
+services:
+  - docker
+matrix:
+  include:
+  - os: linux
+before_install:
+- source contrib/travis/version_env.sh
+- echo zbarw version is $ZBAR_VERSION
+install:
+- if [[ -n $TRAVIS_TAG ]]; then
+      ./contrib/travis/install.sh;
+  fi
+script:
+- if [[ -n $TRAVIS_TAG ]]; then
+      mkdir -p build;
+      ./contrib/travis/travis-build.sh;
+  fi
+deploy:
+  provider: releases
+  skip_cleanup: true
+  api_key:
+    secure: g6EKTdD4q1p2ExBLhw1Ir7gkt4ZCiTDO1LsjLqHem2DMatlk3UpeSiohJDlv46jruTx974YAT+HUGACzqCH9K+cz60W9BBqbotTcCoRw2N9I40JKBpqVYZU/CzxoHVXGjLnkrc7Sq7jwbwf5Z0rcwO/Uq6jIhftRB7jOaG6w98iwVZeMa4opZAM8HwNTPDReAbl+mjkepc+QzC7+KWuIbXdW9e0rxByDGChv039AKuUYJxAXPTiv5NZs0W2Yf/0mv+9HU/l1H8OIrer5b9oMNNrdc5b+kanB1whIgPH3q7xh2YEr7DnUApfjdLRdLgGPggcj5J2WHV4o1/NCFWQRy3skfaXhw0mg6+rC3MswQx7wF/BG5laCOMmI97HLf2udbsJNRva1fM09nj1OvuyHjRkr2TaC/QPZhvkem23piJbfhKt/66cr8yTeGyZvz/USo7JrTFh+h+96AggMw0ss+BlPJBH040AUdgUxLjghOlCHhe9UqHsWv5sYWR2AKVhPliCOlc/5dbYOSgShrshH5Mth3taPLVcI53pk+pjCBTl3z7Q6rx3B+/G7xN7dHcS5UIxhRRqyfvXsrVbRLc0zksz7MvhCYJ5gOGMemLtiUmXmjCdM4G2zQNvBlaglMF+HP/KZmd0ZIlVT5tguNk9kt0mJ6D0raTvJK2TQwf53lB0=
+  file:
+  - build/zbarw-zbarcam-$ZBAR_VERSION-win32.zip
+  - build/zbarw-zbarcam-$ZBAR_VERSION-win64.zip
+  on:
+    repo: zebra-lucky/zbarw
+    tags: true
