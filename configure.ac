@@ -3,7 +3,7 @@ AC_PREREQ([2.61])
 AC_INIT([zbar], [0.10], [spadix@users.sourceforge.net])
 AC_CONFIG_AUX_DIR(config)
 AC_CONFIG_MACRO_DIR(config)
-AM_INIT_AUTOMAKE([1.10 -Wall -Werror foreign subdir-objects std-options dist-bzip2])
+AM_INIT_AUTOMAKE([1.10 -Wall -Werror -Wno-portability foreign subdir-objects std-options dist-bzip2])
 AC_CONFIG_HEADERS([include/config.h])
 AC_CONFIG_SRCDIR(zbar/scanner.c)
 LT_PREREQ([2.2])
@@ -47,7 +47,7 @@ AC_DEFINE_UNQUOTED([LIB_VERSION_REVISION],
   [Library revision])
 
 AM_CPPFLAGS="-I$srcdir/include"
-AM_CFLAGS="-Wall -Wno-parentheses -Werror"
+AM_CFLAGS="-Wall -Wno-parentheses -Werror -Wno-incompatible-pointer-types"
 AM_CXXFLAGS="$AM_CFLAGS"
 AC_SUBST([AM_CPPFLAGS])
 AC_SUBST([AM_CFLAGS])
@@ -57,7 +57,10 @@ dnl windows build
 
 AC_CANONICAL_HOST
 case $host_os in
-  *cygwin* | *mingw* | *uwin* | *djgpp* | *ems* )
+  *mingw*  )
+    win32="yes"
+  ;;
+  *cygwin* | *uwin* | *djgpp* | *ems* )
     win32="yes"
     AC_DEFINE([_WIN32_WINNT], [0x0500], [Minimum Windows API version])
   ;;
